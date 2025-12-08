@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Helper function to check if user is in owner's friends list
+    function isFriend(ownerId) {
+      return isAuthenticated() && 
+             request.auth.uid in get(/databases/$(database)/documents/artifacts/$(appId)/users/$(ownerId)).data.friends;
+    }
+
+    // User documents - users can only read/write their own document
+    match /artifacts/{appId}/users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Goal documents - read access for owner or friends, write access for owner only
+    match /artifacts/{appId}/public/data/goals/{goalId} {
+      // Allow read if user is owner or owner has user in their friends list
+      allow read: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in get(/databases/$(database)/documents/artifacts/oath-app/users/$(resource.data.ownerId)).data.friends
+      );
+      
+      // Allow write only if user is the owner
+      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      
+      // Allow create only if user is setting themselves as owner
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

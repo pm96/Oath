@@ -1,33 +1,39 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { useAuth } from "@/hooks/useAuth";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { Redirect, Tabs } from "expo-router";
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
+/**
+ * TabLayout
+ *
+ * Protected tabs layout for authenticated users
+ * Requirement 8.4: Implement navigation between screens with protected routes
+ */
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { user, loading } = useAuth();
+
+  // Redirect to sign-in if not authenticated
+  if (!loading && !user) {
+    return <Redirect href="/sign-in" />;
+  }
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+    <Tabs screenOptions={{ headerShown: false }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "Friends",
+          tabBarIcon: ({ color }) => (
+            <MaterialIcons size={28} name="people" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="home"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: "My Goals",
+          tabBarIcon: ({ color }) => (
+            <MaterialIcons size={28} name="check-circle" color={color} />
+          ),
         }}
       />
     </Tabs>

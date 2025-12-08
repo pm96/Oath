@@ -1,6 +1,16 @@
-# Welcome to your Expo app 👋
+# Social Accountability MVP
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A mobile application built with Expo/React Native that helps users achieve their goals through social pressure and peer accountability.
+
+## Features
+
+- 🔐 User authentication (sign up, sign in)
+- 🎯 Goal creation and management (daily, weekly, 3x/week)
+- 👥 Social features (friends, goal sharing)
+- 📱 Push notifications (nudges, shame alerts)
+- ⚡ Real-time synchronization across devices
+- 🔴 Automated deadline monitoring
+- 📊 Shame score tracking
 
 ## Get started
 
@@ -39,7 +49,6 @@ Run `npm run deploy` to [deploy to production](https://docs.expo.dev/eas/workflo
 
 Expo offers hosting for websites and API functions via EAS Hosting. See the [Getting Started](https://docs.expo.dev/eas/hosting/get-started/) guide to learn more.
 
-
 ## Get a fresh project
 
 When you're ready, run:
@@ -56,6 +65,69 @@ To learn more about developing your project with Expo, look at the following res
 
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+
+## Deployment
+
+### Quick Deploy
+
+```bash
+./scripts/deploy-production.sh
+```
+
+### Documentation
+
+- **[Quick Deploy Reference](QUICK_DEPLOY.md)** - One-page deployment guide
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
+- **[Verification Checklist](VERIFICATION_CHECKLIST.md)** - Complete testing checklist
+- **[Device Testing Guide](DEVICE_TESTING_GUIDE.md)** - Physical device testing procedures
+- **[Deployment Status](DEPLOYMENT_STATUS.md)** - Current deployment status
+
+### Verify Deployment
+
+```bash
+./scripts/verify-deployment.sh
+```
+
+### Test End-to-End
+
+```bash
+npx ts-node scripts/test-e2e-flows.ts
+```
+
+## Firebase Backend
+
+This app uses Firebase for:
+
+- **Authentication** - User sign up and sign in
+- **Firestore** - Real-time database for goals and user data
+- **Cloud Functions** - Automated deadline checking and notifications
+- **Cloud Messaging** - Push notifications
+
+### Firebase Setup
+
+1. Ensure Firebase project is configured
+2. Enable Authentication (Email/Password)
+3. Create Firestore database
+4. Enable Cloud Functions (Blaze plan required)
+5. Enable Cloud Messaging
+
+## Project Structure
+
+```
+/
+├── app/                    # Expo Router screens
+├── components/             # React components
+│   ├── goals/             # Goal management components
+│   ├── social/            # Social features components
+│   └── ui/                # UI primitives
+├── services/              # Firebase services
+│   └── firebase/          # Firebase integration
+├── hooks/                 # Custom React hooks
+├── functions/             # Cloud Functions
+│   └── src/              # Function source code
+├── scripts/               # Deployment and testing scripts
+└── firestore.rules        # Firestore security rules
+```
 
 ## Join the community
 
