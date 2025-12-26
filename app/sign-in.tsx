@@ -1,14 +1,12 @@
-import { Button, ButtonText } from "@/components/ui/button";
-import { Heading } from "@/components/ui/heading";
-import { Input, InputField } from "@/components/ui/input";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Heading, Text } from "@/components/ui/Text";
 import { useAuth } from "@/hooks/useAuth";
 import { validateEmail, validatePassword } from "@/utils/errorHandling";
 import { showErrorToast } from "@/utils/toast";
 import { Redirect, router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 
 /**
  * SignInScreen
@@ -74,15 +72,22 @@ export default function SignIn() {
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={{ flex: 1 }}
         >
-            <VStack className="flex-1 p-6 justify-center" space="xl">
-                <VStack space="md">
-                    <Heading size="2xl">Sign In</Heading>
-                    <Text>Welcome back! Sign in to continue.</Text>
-                </VStack>
+            <ScrollView
+                contentContainerStyle={{
+                    flexGrow: 1,
+                    padding: 24,
+                    justifyContent: "center",
+                }}
+                keyboardShouldPersistTaps="handled"
+            >
+                <View style={{ gap: 32 }}>
+                    <View style={{ gap: 16 }}>
+                        <Heading size="xl">Sign In</Heading>
+                        <Text>Welcome back! Sign in to continue.</Text>
+                    </View>
 
-                <VStack space="lg">
-                    <Input>
-                        <InputField
+                    <View style={{ gap: 24 }}>
+                        <Input
                             placeholder="Email"
                             value={email}
                             onChangeText={setEmail}
@@ -91,10 +96,8 @@ export default function SignIn() {
                             autoComplete="email"
                             editable={!loading}
                         />
-                    </Input>
 
-                    <Input>
-                        <InputField
+                        <Input
                             placeholder="Password"
                             value={password}
                             onChangeText={setPassword}
@@ -102,21 +105,21 @@ export default function SignIn() {
                             autoComplete="password"
                             editable={!loading}
                         />
-                    </Input>
 
-                    <Button onPress={handleSignIn} disabled={loading}>
-                        <ButtonText>{loading ? "Signing in..." : "Sign In"}</ButtonText>
-                    </Button>
+                        <Button onPress={handleSignIn} disabled={loading}>
+                            {loading ? "Signing in..." : "Sign In"}
+                        </Button>
 
-                    <Button
-                        variant="link"
-                        onPress={() => router.push("/create-account")}
-                        disabled={loading}
-                    >
-                        <ButtonText>Don&apos;t have an account? Create one</ButtonText>
-                    </Button>
-                </VStack>
-            </VStack>
+                        <Button
+                            variant="ghost"
+                            onPress={() => router.push("/create-account")}
+                            disabled={loading}
+                        >
+                            Don&apos;t have an account? Create one
+                        </Button>
+                    </View>
+                </View>
+            </ScrollView>
         </KeyboardAvoidingView>
     );
 }

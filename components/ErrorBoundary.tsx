@@ -1,7 +1,7 @@
-import { Button, ButtonText } from "@/components/ui/button";
-import { Heading } from "@/components/ui/heading";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
+import { Button } from "@/components/ui/Button";
+import { VStack } from "@/components/ui/Stack";
+import { Heading, Text } from "@/components/ui/Text";
+import * as Clipboard from "expo-clipboard";
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { ScrollView } from "react-native";
 
@@ -71,9 +71,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
             // Default fallback UI
             return (
-                <ScrollView className="flex-1 bg-background-0">
-                    <VStack className="flex-1 p-6 justify-center" space="xl">
-                        <VStack space="md">
+                <ScrollView>
+                    <VStack spacing="xl">
+                        <VStack spacing="md">
                             <Heading size="xl">Something went wrong</Heading>
                             <Text>
                                 We encountered an unexpected error. Please try again or restart
@@ -81,25 +81,35 @@ export class ErrorBoundary extends Component<Props, State> {
                             </Text>
                         </VStack>
 
-                        {__DEV__ && this.state.error && (
-                            <VStack space="sm" className="p-4 bg-error-100 rounded-lg">
-                                <Text className="font-semibold text-error-700">
-                                    Error Details (Development Only):
-                                </Text>
-                                <Text className="text-sm text-error-600">
+                        {this.state.error && (
+                            <VStack spacing="sm">
+                                <Text>Error Details (Development Only):</Text>
+                                <Text
+                                    selectable
+                                    style={{ maxWidth: "100%" }}
+                                >
                                     {this.state.error.toString()}
                                 </Text>
                                 {this.state.errorInfo && (
-                                    <Text className="text-xs text-error-500">
-                                        {this.state.errorInfo.componentStack}
-                                    </Text>
+                                    <Text>{this.state.errorInfo.componentStack}</Text>
                                 )}
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onPress={() =>
+                                        this.state.error &&
+                                        Clipboard.setStringAsync(
+                                            `${this.state.error.toString()}\n${this.state.errorInfo?.componentStack ?? ""
+                                            }`,
+                                        )
+                                    }
+                                >
+                                    Copy details
+                                </Button>
                             </VStack>
                         )}
 
-                        <Button onPress={this.handleReset}>
-                            <ButtonText>Try Again</ButtonText>
-                        </Button>
+                        <Button onPress={this.handleReset}>Try Again</Button>
                     </VStack>
                 </ScrollView>
             );

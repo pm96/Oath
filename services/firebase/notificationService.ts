@@ -1,4 +1,5 @@
 import * as Device from "expo-device";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { doc, updateDoc } from "firebase/firestore";
 import { Platform } from "react-native";
@@ -62,7 +63,18 @@ export async function registerForPushNotifications(
         }
 
         // Get the Expo Push Token
-        const projectId = "0e465e71-1e74-4280-b29a-d43a2445564b"; // From app.json
+        const projectId =
+            Constants?.expoConfig?.extra?.eas?.projectId ??
+            Constants?.expoConfig?.extra?.projectId ??
+            Constants?.easConfig?.projectId;
+
+        if (!projectId) {
+            console.warn(
+                "Expo project ID not found. Ensure eas.projectId is defined in app config.",
+            );
+            return null;
+        }
+
         const tokenData = await Notifications.getExpoPushTokenAsync({
             projectId,
         });

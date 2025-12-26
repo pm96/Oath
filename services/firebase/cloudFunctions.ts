@@ -9,6 +9,19 @@ import { app } from "../../firebaseConfig";
 
 const functions = getFunctions(app);
 
+interface RecordHabitCompletionRequest {
+    habitId: string;
+    completedAt: number;
+    timezone?: string;
+    notes?: string;
+    difficulty: "easy" | "medium" | "hard";
+}
+
+interface RecordHabitCompletionResponse {
+    success: boolean;
+    completionId?: string;
+}
+
 /**
  * Send a nudge notification to a friend about their goal
  *
@@ -43,6 +56,61 @@ export async function sendNudge(
         } else {
             throw new Error("Failed to send nudge. Please try again.");
         }
+    }
+}
+
+/**
+ * Record a habit completion via Cloud Function so streak calculations happen server-side.
+ */
+export async function recordHabitCompletion(
+    payload: RecordHabitCompletionRequest,
+): Promise<RecordHabitCompletionResponse> {
+    try {
+        const callable = httpsCallable<
+            RecordHabitCompletionRequest,
+            RecordHabitCompletionResponse
+        >(functions, "recordHabitCompletion");
+
+        const result = await callable(payload);
+        return result.data;
+    } catch (error: any) {
+        console.error("Error recording habit completion:", error);
+
+        if (error.code === "already-exists") {
+            throw new Error("Habit already completed for this day.");
+        }
+
+        if (error.code === "invalid-argument") {
+            throw new Error(error.message || "Invalid completion data.");
+        }
+
+        throw new Error("Failed to record completion. Please try again.");
+    }
+}
+
+/**
+ * Undo today's habit completion using the server so deletion is authorized.
+ */
+export async function undoHabitCompletion(payload: { habitId: string }) {
+    try {
+        const callable = httpsCallable<
+            { habitId: string },
+            { success: boolean }
+        >(functions, "undoHabitCompletion");
+
+        const result = await callable(payload);
+        return result.data;
+    } catch (error: any) {
+        console.error("Error undoing habit completion:", error);
+
+        if (error.code === "failed-precondition") {
+            throw new Error("There is no completion to undo for this habit.");
+        }
+        if (error.code === "permission-denied") {
+            throw new Error("You cannot undo a habit you do not own.");
+        }
+
+        throw new Error("Failed to undo completion. Please try again.");
     }
 }
 

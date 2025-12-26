@@ -5,6 +5,7 @@ import {
 } from "@/utils/errorHandling";
 import {
     addDoc,
+    getDocs,
     onSnapshot,
     query,
     serverTimestamp,
@@ -12,8 +13,12 @@ import {
     updateDoc,
     where,
 } from "firebase/firestore";
+import {
+    recordHabitCompletion,
+    undoHabitCompletion as undoHabitCompletionFunction,
+} from "./cloudFunctions";
 import { getGoalDoc, getGoalsCollection, Goal } from "./collections";
-
+import { streakService } from "./streakService";
 /**
  * Input type for creating a new goal
  */
@@ -21,6 +26,10 @@ export interface GoalInput {
     description: string;
     frequency: "daily" | "weekly" | "3x_a_week";
     targetDays: string[]; // e.g., ['Monday', 'Wednesday', 'Friday']
+    difficulty: "easy" | "medium" | "hard";
+    type: "time" | "flexible";
+    targetTime?: string | null;
+    isShared: boolean;
 }
 
 /**
@@ -101,6 +110,7 @@ export function calculateNextDeadline(
 /**
  * Create a new goal
  * Requirement 2.1: Validate goal inputs and handle errors
+ * Now initializes streak tracking for the new habit
  */
 export async function createGoal(
     userId: string,
@@ -129,12 +139,27 @@ export async function createGoal(
                 latestCompletionDate: null,
                 currentStatus: "Green" as const,
                 nextDeadline: Timestamp.fromDate(nextDeadline),
-                isShared: true,
+                isShared: goalInput.isShared,
+                type: goalInput.type,
+                targetTime:
+                    goalInput.type === "time" && goalInput.targetTime
+                        ? goalInput.targetTime
+                        : null,
                 createdAt: serverTimestamp(),
                 redSince: null,
+                difficulty: goalInput.difficulty,
             };
 
             const docRef = await addDoc(goalsCollection, goalData);
+
+            // Initialize streak tracking for the new habit
+            try {
+                await streakService.initializeHabitStreak(docRef.id, userId);
+            } catch (streakError) {
+                console.warn("Failed to initialize streak tracking:", streakError);
+                // Don't fail goal creation if streak initialization fails
+            }
+
             return docRef.id;
         });
     } catch (error) {
@@ -189,6 +214,7 @@ export async function updateGoal(
 /**
  * Complete a goal - updates completion date, recalculates deadline, sets status to Green
  * Includes validation and error handling
+ * Now integrates with streak system for habit tracking
  */
 export async function completeGoal(goalId: string, goal: Goal): Promise<void> {
     if (!goalId) {
@@ -207,13 +233,41 @@ export async function completeGoal(goalId: string, goal: Goal): Promise<void> {
             now,
         );
 
+        const recordResult = await recordHabitCompletion({
+            habitId: goalId,
+            completedAt: now.getTime(),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            notes: "",
+            difficulty: goal.difficulty,
+        });
+
+        // Update goal status only after the completion is successfully recorded.
         await updateGoal(goalId, {
             latestCompletionDate: now,
             nextDeadline: nextDeadline,
             currentStatus: "Green",
             redSince: null,
+            lastCompletionId: recordResult.completionId ?? null,
         });
     } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(message);
+    }
+}
+
+/**
+ * Undo today's completion for a goal
+ * Removes the completion record, recalculates deadlines, and refreshes streak data.
+ */
+export async function undoGoalCompletion(goalId: string): Promise<void> {
+    if (!goalId) {
+        throw new Error("Goal ID is required");
+    }
+
+    try {
+        await undoHabitCompletionFunction({ habitId: goalId });
+    } catch (error) {
+        console.error(error);
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(message);
     }
@@ -252,9 +306,13 @@ export function getUserGoals(
                         latestCompletionDate: data.latestCompletionDate?.toDate() || null,
                         currentStatus: data.currentStatus,
                         nextDeadline: data.nextDeadline.toDate(),
-                        isShared: data.isShared,
+                        isShared: data.isShared ?? true,
+                        type: (data.type as "time" | "flexible") || "flexible",
+                        targetTime: data.targetTime ?? null,
                         createdAt: data.createdAt?.toDate() || new Date(),
                         redSince: data.redSince?.toDate() || null,
+                        difficulty: data.difficulty || "medium", // Default to medium for existing goals
+                        lastCompletionId: data.lastCompletionId ?? null,
                     };
                 });
                 callback(goals);
@@ -279,4 +337,81 @@ export function getUserGoals(
     );
 
     return unsubscribe;
+}
+
+/**
+ * Fetch user's goals once without a real-time subscription
+ */
+export async function fetchUserGoalsOnce(userId: string): Promise<Goal[]> {
+    if (!userId) {
+        throw new Error("User ID is required");
+    }
+
+    try {
+        const goalsCollection = getGoalsCollection();
+        const q = query(goalsCollection, where("ownerId", "==", userId));
+        const snapshot = await getDocs(q);
+
+        return snapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ownerId: data.ownerId,
+                description: data.description,
+                frequency: data.frequency,
+                targetDays: data.targetDays,
+                latestCompletionDate: data.latestCompletionDate?.toDate() || null,
+                currentStatus: data.currentStatus,
+                nextDeadline: data.nextDeadline.toDate(),
+                isShared: data.isShared ?? true,
+                type: (data.type as "time" | "flexible") || "flexible",
+                targetTime: data.targetTime ?? null,
+                createdAt: data.createdAt?.toDate() || new Date(),
+                redSince: data.redSince?.toDate() || null,
+                difficulty: data.difficulty || "medium",
+                lastCompletionId: data.lastCompletionId ?? null,
+            } satisfies Goal;
+        });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(message);
+    }
+}
+
+/**
+ * Get streak information for a goal/habit
+ * Integrates with the streak system to provide streak data
+ */
+export async function getGoalStreak(goalId: string, userId: string) {
+    try {
+        return await streakService.getHabitStreak(goalId, userId);
+    } catch (error) {
+        console.warn("Failed to get streak for goal:", error);
+        return null;
+    }
+}
+
+/**
+ * Get calendar data for a goal/habit
+ * Integrates with the streak system to provide calendar visualization
+ */
+export async function getGoalCalendar(
+    goalId: string,
+    userId: string,
+    days: number = 90,
+    timezone?: string,
+) {
+    try {
+        const userTimezone =
+            timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return await streakService.getHabitCalendar(
+            goalId,
+            userId,
+            days,
+            userTimezone,
+        );
+    } catch (error) {
+        console.warn("Failed to get calendar for goal:", error);
+        return [];
+    }
 }

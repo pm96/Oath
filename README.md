@@ -76,11 +76,20 @@ To learn more about developing your project with Expo, look at the following res
 
 ### Documentation
 
-- **[Quick Deploy Reference](QUICK_DEPLOY.md)** - One-page deployment guide
-- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
-- **[Verification Checklist](VERIFICATION_CHECKLIST.md)** - Complete testing checklist
-- **[Device Testing Guide](DEVICE_TESTING_GUIDE.md)** - Physical device testing procedures
-- **[Deployment Status](DEPLOYMENT_STATUS.md)** - Current deployment status
+All build, testing, and accessibility guides now live under `docs/`.
+
+- **[Quick Deploy Reference](docs/guides/QUICK_DEPLOY.md)** - One-page deployment guide
+- **[Deployment Guide](docs/guides/DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
+- **[Verification Checklist](docs/guides/VERIFICATION_CHECKLIST.md)** - Complete testing checklist
+- **[Device Testing Guide](docs/guides/DEVICE_TESTING_GUIDE.md)** - Physical device testing procedures
+- **[Deployment Commands](docs/guides/DEPLOYMENT_COMMANDS.md)** - NPM/EAS command reference
+- **[Accessibility Enhancements](docs/guides/ACCESSIBILITY_ENHANCEMENTS.md)** - Current accessibility backlog
+- **[Error Handling Summary](docs/guides/ERROR_HANDLING_SUMMARY.md)** - Logging/retry expectations
+- **[Firebase Setup](docs/guides/FIREBASE_SETUP.md)** - Backend provisioning steps
+- **[Notification Implementation](docs/guides/NOTIFICATION_IMPLEMENTATION.md)** - Push notification design
+- **[Security Rules](docs/guides/SECURITY_RULES.md)** - Firestore rules overview
+
+Archived historical summaries are in `docs/archive/`.
 
 ### Verify Deployment
 
@@ -92,6 +101,14 @@ To learn more about developing your project with Expo, look at the following res
 
 ```bash
 npx ts-node scripts/test-e2e-flows.ts
+```
+
+### Local Quality Checks
+
+Run ESLint + Jest together before opening a PR:
+
+```bash
+npm run check
 ```
 
 ## Firebase Backend

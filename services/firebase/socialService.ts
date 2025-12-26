@@ -5,6 +5,7 @@ import {
 import {
     arrayUnion,
     getDoc,
+    getDocs,
     onSnapshot,
     query,
     updateDoc,
@@ -34,29 +35,58 @@ export function getFriendsGoals(
     callback: (goals: GoalWithOwner[]) => void,
     onError?: (error: Error) => void,
 ): () => void {
-    // If no friends, return empty array
     if (friendIds.length === 0) {
         callback([]);
         return () => { };
     }
 
     const goalsCollection = getGoalsCollection();
-    // Query goals where ownerId is in the friends array
-    const q = query(goalsCollection, where("ownerId", "in", friendIds));
+    const friendChunks = chunkArray(friendIds, 10);
+    const chunkResults = new Map<number, GoalWithOwner[]>();
+    const ownerCache = getOwnerCache();
+    const ownerFetchPromises = new Map<string, Promise<User | null>>();
 
-    const unsubscribe = onSnapshot(
-        q,
-        async (snapshot) => {
-            try {
-                // Fetch owner information for each goal
-                const goalsWithOwners: GoalWithOwner[] = await Promise.all(
+    const getOwnerData = (ownerId: string): Promise<User | null> => {
+        const cached = ownerCache.get(ownerId);
+        const isFresh =
+            cached && Date.now() - cached.updatedAt < OWNER_CACHE_TTL_MS;
+
+        if (isFresh) {
+            return Promise.resolve(cached.data ?? null);
+        }
+
+        if (cached) {
+            ownerCache.delete(ownerId);
+        }
+
+        let fetchPromise = ownerFetchPromises.get(ownerId);
+        if (!fetchPromise) {
+            fetchPromise = fetchAndCacheOwner(ownerId, ownerCache).finally(() => {
+                ownerFetchPromises.delete(ownerId);
+            });
+            ownerFetchPromises.set(ownerId, fetchPromise);
+        }
+
+        return fetchPromise;
+    };
+
+    const emitCombinedResults = () => {
+        const combined = friendChunks.flatMap((_, index) => {
+            return chunkResults.get(index) ?? [];
+        });
+        callback(combined);
+    };
+
+    const listeners = friendChunks.map((chunk, index) => {
+        const q = query(goalsCollection, where("ownerId", "in", chunk));
+
+        return onSnapshot(
+            q,
+            (snapshot) => {
+                Promise.all(
                     snapshot.docs.map(async (goalDoc) => {
                         const data = goalDoc.data();
-
-                        // Fetch owner's user document to get displayName and shameScore
-                        const ownerDocRef = getUserDoc(data.ownerId);
-                        const ownerDoc = await getDoc(ownerDocRef);
-                        const ownerData = ownerDoc.data() as User;
+                        const ownerData = await getOwnerData(data.ownerId);
 
                         return {
                             id: goalDoc.id,
@@ -67,37 +97,168 @@ export function getFriendsGoals(
                             latestCompletionDate: data.latestCompletionDate?.toDate() || null,
                             currentStatus: data.currentStatus,
                             nextDeadline: data.nextDeadline.toDate(),
-                            isShared: data.isShared,
+                            isShared: data.isShared ?? true,
+                            type: (data.type as "time" | "flexible") || "flexible",
+                            targetTime: data.targetTime ?? null,
                             createdAt: data.createdAt?.toDate() || new Date(),
                             redSince: data.redSince?.toDate() || null,
+                            difficulty: data.difficulty || "medium",
                             ownerName: ownerData?.displayName || "Unknown",
                             ownerShameScore: ownerData?.shameScore || 0,
                         };
                     }),
-                );
-
-                callback(goalsWithOwners);
-            } catch (error) {
-                console.error("Error processing friends goals snapshot:", error);
+                )
+                    .then((goalsWithOwners) => {
+                        chunkResults.set(index, goalsWithOwners);
+                        emitCombinedResults();
+                    })
+                    .catch((error) => {
+                        console.error("Error processing friends goals snapshot:", error);
+                        if (onError) {
+                            onError(
+                                error instanceof Error
+                                    ? error
+                                    : new Error("Failed to process friends goals data"),
+                            );
+                        }
+                    });
+            },
+            (error) => {
+                console.error("Error in friends goals snapshot listener:", error);
                 if (onError) {
-                    onError(
-                        error instanceof Error
-                            ? error
-                            : new Error("Failed to process friends goals data"),
-                    );
+                    const message = getUserFriendlyErrorMessage(error);
+                    onError(new Error(message));
                 }
-            }
-        },
-        (error) => {
-            console.error("Error in friends goals snapshot listener:", error);
-            if (onError) {
-                const message = getUserFriendlyErrorMessage(error);
-                onError(new Error(message));
-            }
-        },
-    );
+            },
+        );
+    });
 
-    return unsubscribe;
+    return () => {
+        listeners.forEach((unsubscribe) => unsubscribe());
+    };
+}
+
+/**
+ * Fetch friends' goals once without creating listeners
+ */
+export async function fetchFriendsGoalsOnce(
+    friendIds: string[],
+): Promise<GoalWithOwner[]> {
+    if (friendIds.length === 0) {
+        return [];
+    }
+
+    try {
+        const goalsCollection = getGoalsCollection();
+        const friendChunks = chunkArray(friendIds, 10);
+        const ownerCache = getOwnerCache();
+        const ownerFetchPromises = new Map<string, Promise<User | null>>();
+
+        const getOwnerData = (ownerId: string) => {
+            const cached = ownerCache.get(ownerId);
+            const isFresh =
+                cached && Date.now() - cached.updatedAt < OWNER_CACHE_TTL_MS;
+
+            if (isFresh) {
+                return Promise.resolve(cached.data ?? null);
+            }
+
+            if (cached) {
+                ownerCache.delete(ownerId);
+            }
+
+            let fetchPromise = ownerFetchPromises.get(ownerId);
+            if (!fetchPromise) {
+                fetchPromise = fetchAndCacheOwner(ownerId, ownerCache).finally(() => {
+                    ownerFetchPromises.delete(ownerId);
+                });
+                ownerFetchPromises.set(ownerId, fetchPromise);
+            }
+
+            return fetchPromise;
+        };
+
+        const results: GoalWithOwner[] = [];
+
+        for (const chunk of friendChunks) {
+            const q = query(goalsCollection, where("ownerId", "in", chunk));
+            const snapshot = await getDocs(q);
+
+            for (const goalDoc of snapshot.docs) {
+                const data = goalDoc.data();
+                const ownerData = await getOwnerData(data.ownerId);
+
+                results.push({
+                    id: goalDoc.id,
+                    ownerId: data.ownerId,
+                    description: data.description,
+                    frequency: data.frequency,
+                    targetDays: data.targetDays,
+                    latestCompletionDate: data.latestCompletionDate?.toDate() || null,
+                    currentStatus: data.currentStatus,
+                    nextDeadline: data.nextDeadline.toDate(),
+                    isShared: data.isShared ?? true,
+                    type: (data.type as "time" | "flexible") || "flexible",
+                    targetTime: data.targetTime ?? null,
+                    createdAt: data.createdAt?.toDate() || new Date(),
+                    redSince: data.redSince?.toDate() || null,
+                    difficulty: data.difficulty || "medium",
+                    ownerName: ownerData?.displayName || "Unknown",
+                    ownerShameScore: ownerData?.shameScore || 0,
+                });
+            }
+        }
+
+        return results;
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(message);
+    }
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < items.length; i += size) {
+        result.push(items.slice(i, i + size));
+    }
+    return result;
+}
+
+const ownerCacheMap = new Map<string, { data: User | null; updatedAt: number }>();
+const OWNER_CACHE_TTL_MS = 5 * 60 * 1000;
+const OWNER_CACHE_MAX_ENTRIES = 200;
+
+function getOwnerCache() {
+    return ownerCacheMap;
+}
+
+async function fetchAndCacheOwner(
+    ownerId: string,
+    cache: Map<string, { data: User | null; updatedAt: number }>,
+): Promise<User | null> {
+    try {
+        const docRef = getUserDoc(ownerId);
+        const doc = await getDoc(docRef);
+        const data = doc.exists() ? (doc.data() as User) : null;
+        if (!cache.has(ownerId) && cache.size >= OWNER_CACHE_MAX_ENTRIES) {
+            const oldestKey = cache.keys().next().value;
+            if (oldestKey) {
+                cache.delete(oldestKey);
+            }
+        }
+        cache.set(ownerId, { data, updatedAt: Date.now() });
+        return data;
+    } catch (error) {
+        console.error(`Failed to load owner ${ownerId}:`, error);
+        if (!cache.has(ownerId) && cache.size >= OWNER_CACHE_MAX_ENTRIES) {
+            const oldestKey = cache.keys().next().value;
+            if (oldestKey) {
+                cache.delete(oldestKey);
+            }
+        }
+        cache.set(ownerId, { data: null, updatedAt: Date.now() });
+        return null;
+    }
 }
 
 /**

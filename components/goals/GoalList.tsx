@@ -1,13 +1,13 @@
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
-import { Text } from "@/components/ui/text";
+import { Text } from "@/components/ui/Text";
 import { VStack } from "@/components/ui/vstack";
-import { Goal } from "@/services/firebase/collections";
+import { GoalWithStreak } from "@/hooks/useGoals";
 import React from "react";
 import { FlatList, RefreshControl } from "react-native";
 import { GoalItem } from "./GoalItem";
 
 interface GoalListProps {
-    goals: Goal[];
+    goals: GoalWithStreak[];
     onComplete: (goalId: string) => Promise<void>;
     loading?: boolean;
     onRefresh?: () => void;
@@ -70,7 +70,7 @@ export function GoalList({
      * Requirement 8.5: Optimize list rendering performance with FlatList
      */
     const renderGoalItem = React.useCallback(
-        ({ item }: { item: Goal }) => (
+        ({ item }: { item: GoalWithStreak }) => (
             <GoalItem
                 goal={item}
                 onComplete={onComplete}

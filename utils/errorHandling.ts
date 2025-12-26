@@ -204,6 +204,10 @@ export function validateGoalInput(input: {
     description: string;
     frequency: string;
     targetDays: string[];
+    difficulty: string;
+    type?: "time" | "flexible";
+    targetTime?: string | null;
+    isShared?: boolean;
 }): string | null {
     // Check description
     if (!input.description || !input.description.trim()) {
@@ -224,6 +228,16 @@ export function validateGoalInput(input: {
         return "Invalid frequency. Must be daily, weekly, or 3x_a_week";
     }
 
+    // Check difficulty
+    if (!input.difficulty) {
+        return "Difficulty is required";
+    }
+
+    const validDifficulties = ["easy", "medium", "hard"];
+    if (!validDifficulties.includes(input.difficulty)) {
+        return "Invalid difficulty. Must be easy, medium, or hard";
+    }
+
     // Check target days
     if (!input.targetDays || input.targetDays.length === 0) {
         return "At least one target day is required";
@@ -242,6 +256,23 @@ export function validateGoalInput(input: {
     for (const day of input.targetDays) {
         if (!validDays.includes(day)) {
             return `Invalid day: ${day}`;
+        }
+    }
+
+    // Validate goal type
+    const goalType = input.type ?? "flexible";
+    if (!["time", "flexible"].includes(goalType)) {
+        return "Invalid habit type. Must be flexible or time-based";
+    }
+
+    if (goalType === "time") {
+        if (!input.targetTime || !input.targetTime.trim()) {
+            return "Please specify a target time";
+        }
+
+        const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+        if (!timeRegex.test(input.targetTime.trim())) {
+            return "Please provide target time in HH:MM (24h) format";
         }
     }
 

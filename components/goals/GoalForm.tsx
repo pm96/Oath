@@ -1,4 +1,4 @@
-import { Button, ButtonText } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import {
     Checkbox,
     CheckboxIcon,
@@ -6,7 +6,7 @@ import {
     CheckboxLabel,
 } from "@/components/ui/checkbox";
 import { HStack } from "@/components/ui/hstack";
-import { Input, InputField } from "@/components/ui/input";
+import { Input } from "@/components/ui/Input";
 import {
     Select,
     SelectBackdrop,
@@ -19,8 +19,8 @@ import {
     SelectPortal,
     SelectTrigger,
 } from "@/components/ui/select";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
+import { VStack } from "@/components/ui/Stack";
+import { Text } from "@/components/ui/Text";
 import { GoalInput } from "@/services/firebase/goalService";
 import { validateGoalInput } from "@/utils/errorHandling";
 import { showErrorToast } from "@/utils/toast";
@@ -55,8 +55,20 @@ export function GoalForm({ onSubmit, onCancel, initialValues }: GoalFormProps) {
     const [frequency, setFrequency] = useState<"daily" | "weekly" | "3x_a_week">(
         initialValues?.frequency || "daily",
     );
+    const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">(
+        initialValues?.difficulty || "medium",
+    );
     const [targetDays, setTargetDays] = useState<string[]>(
         initialValues?.targetDays || [],
+    );
+    const [type, setType] = useState<"time" | "flexible">(
+        initialValues?.type || "flexible",
+    );
+    const [targetTime, setTargetTime] = useState<string>(
+        initialValues?.targetTime || "07:00",
+    );
+    const [isShared, setIsShared] = useState<boolean>(
+        initialValues?.isShared ?? true,
     );
     const [loading, setLoading] = useState(false);
 
@@ -68,7 +80,11 @@ export function GoalForm({ onSubmit, onCancel, initialValues }: GoalFormProps) {
         return validateGoalInput({
             description,
             frequency,
+            difficulty,
             targetDays,
+            type,
+            targetTime: type === "time" ? targetTime : undefined,
+            isShared,
         });
     };
 
@@ -89,12 +105,20 @@ export function GoalForm({ onSubmit, onCancel, initialValues }: GoalFormProps) {
             await onSubmit({
                 description: description.trim(),
                 frequency,
+                difficulty,
                 targetDays,
+                type,
+                targetTime: type === "time" ? targetTime : undefined,
+                isShared,
             });
             // Reset form after successful submission
             setDescription("");
             setFrequency("daily");
+            setDifficulty("medium");
             setTargetDays([]);
+            setType("flexible");
+            setTargetTime("07:00");
+            setIsShared(true);
         } catch (error: any) {
             showErrorToast(error.message || "Failed to save goal", "Error");
         } finally {
@@ -132,21 +156,19 @@ export function GoalForm({ onSubmit, onCancel, initialValues }: GoalFormProps) {
 
     return (
         <ScrollView>
-            <VStack space="lg" className="p-4">
-                <VStack space="sm">
-                    <Text className="font-semibold">Goal Description</Text>
-                    <Input>
-                        <InputField
-                            placeholder="e.g., Go to the gym"
-                            value={description}
-                            onChangeText={setDescription}
-                            editable={!loading}
-                        />
-                    </Input>
+            <VStack spacing="lg">
+                <VStack spacing="sm">
+                    <Text>Goal Description</Text>
+                    <Input
+                        placeholder="e.g., Go to the gym"
+                        value={description}
+                        onChangeText={setDescription}
+                        editable={!loading}
+                    />
                 </VStack>
 
-                <VStack space="sm">
-                    <Text className="font-semibold">Frequency</Text>
+                <VStack spacing="sm">
+                    <Text>Frequency</Text>
                     <Select
                         selectedValue={frequency}
                         onValueChange={handleFrequencyChange}
@@ -154,7 +176,7 @@ export function GoalForm({ onSubmit, onCancel, initialValues }: GoalFormProps) {
                     >
                         <SelectTrigger>
                             <SelectInput placeholder="Select frequency" />
-                            <SelectIcon as={ChevronDownIcon} className="mr-3" />
+                            <SelectIcon as={ChevronDownIcon} />
                         </SelectTrigger>
                         <SelectPortal>
                             <SelectBackdrop />
@@ -170,9 +192,75 @@ export function GoalForm({ onSubmit, onCancel, initialValues }: GoalFormProps) {
                     </Select>
                 </VStack>
 
-                <VStack space="sm">
-                    <Text className="font-semibold">Target Days</Text>
-                    <VStack space="xs">
+                <VStack spacing="sm">
+                    <Text>Habit Type</Text>
+                    <Select
+                        selectedValue={type}
+                        onValueChange={(value) =>
+                            setType((value as "time" | "flexible") || "flexible")
+                        }
+                        isDisabled={loading}
+                    >
+                        <SelectTrigger>
+                            <SelectInput placeholder="Select type" />
+                            <SelectIcon as={ChevronDownIcon} />
+                        </SelectTrigger>
+                        <SelectPortal>
+                            <SelectBackdrop />
+                            <SelectContent>
+                                <SelectDragIndicatorWrapper>
+                                    <SelectDragIndicator />
+                                </SelectDragIndicatorWrapper>
+                                <SelectItem label="Flexible" value="flexible" />
+                                <SelectItem label="Time-based" value="time" />
+                            </SelectContent>
+                        </SelectPortal>
+                    </Select>
+                </VStack>
+
+                {type === "time" && (
+                    <VStack spacing="sm">
+                        <Text>Target Time (HH:MM)</Text>
+                        <Input
+                            placeholder="07:00"
+                            value={targetTime}
+                            onChangeText={setTargetTime}
+                            editable={!loading}
+                            keyboardType="numbers-and-punctuation"
+                        />
+                    </VStack>
+                )}
+
+                <VStack spacing="sm">
+                    <Text>Difficulty</Text>
+                    <Select
+                        selectedValue={difficulty}
+                        onValueChange={(value) =>
+                            setDifficulty(value as "easy" | "medium" | "hard")
+                        }
+                        isDisabled={loading}
+                    >
+                        <SelectTrigger>
+                            <SelectInput placeholder="Select difficulty" />
+                            <SelectIcon as={ChevronDownIcon} />
+                        </SelectTrigger>
+                        <SelectPortal>
+                            <SelectBackdrop />
+                            <SelectContent>
+                                <SelectDragIndicatorWrapper>
+                                    <SelectDragIndicator />
+                                </SelectDragIndicatorWrapper>
+                                <SelectItem label="Easy" value="easy" />
+                                <SelectItem label="Medium" value="medium" />
+                                <SelectItem label="Hard" value="hard" />
+                            </SelectContent>
+                        </SelectPortal>
+                    </Select>
+                </VStack>
+
+                <VStack spacing="sm">
+                    <Text>Target Days</Text>
+                    <VStack spacing="xs">
                         {DAYS_OF_WEEK.map((day) => (
                             <Checkbox
                                 key={day}
@@ -190,31 +278,39 @@ export function GoalForm({ onSubmit, onCancel, initialValues }: GoalFormProps) {
                     </VStack>
                 </VStack>
 
+                <Checkbox
+                    value="isShared"
+                    isChecked={isShared}
+                    onChange={(checked) => setIsShared(Boolean(checked))}
+                    isDisabled={loading}
+                >
+                    <CheckboxIndicator>
+                        <CheckboxIcon as={CheckIcon} />
+                    </CheckboxIndicator>
+                    <CheckboxLabel>Share habit with friends</CheckboxLabel>
+                </Checkbox>
+
                 {/* Requirement 8.3: Touch targets at least 44x44 pixels */}
-                <HStack space="md" className="mt-4">
+                <HStack space="md">
                     <Button
                         onPress={handleSubmit}
                         disabled={loading}
-                        className="flex-1"
                         style={{ minHeight: 44 }}
                     >
-                        <ButtonText>
-                            {loading
-                                ? "Saving..."
-                                : initialValues
-                                    ? "Update Goal"
-                                    : "Create Goal"}
-                        </ButtonText>
+                        {loading
+                            ? "Saving..."
+                            : initialValues
+                                ? "Update Goal"
+                                : "Create Goal"}
                     </Button>
                     {onCancel && (
                         <Button
                             variant="outline"
                             onPress={onCancel}
                             disabled={loading}
-                            className="flex-1"
                             style={{ minHeight: 44 }}
                         >
-                            <ButtonText>Cancel</ButtonText>
+                            Cancel
                         </Button>
                     )}
                 </HStack>

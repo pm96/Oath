@@ -1,4 +1,9 @@
 import * as admin from "firebase-admin";
+import type { DocumentData, Timestamp } from "firebase-admin/firestore";
+import {
+    onDocumentCreated,
+    onDocumentUpdated,
+} from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
@@ -7,6 +12,765 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const APP_ID = "oath-app";
+
+type StoredMilestone = {
+    days: number;
+    achievedAt: Timestamp | admin.firestore.FieldValue;
+    celebrated: boolean;
+};
+
+type CompletionDoc = DocumentData & {
+    id: string;
+    completedAt: Timestamp;
+    habitId: string;
+    userId: string;
+};
+
+/**
+ * Server-side streak calculation and validation
+ * Requirements: 12.2, 12.3, 12.4, 12.5
+ */
+
+/**
+ * Callable Cloud Function to record a habit completion and update streak
+ * This ensures all streak calculations are done server-side
+ * Requirements: 12.2, 12.3
+ */
+export const recordHabitCompletion = onCall(async (request) => {
+    console.log("recordHabitCompletion function called");
+
+    // Verify authentication
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to record completions",
+        );
+    }
+
+    const userId = request.auth.uid;
+    const { habitId, completedAt, timezone, notes, difficulty } = request.data;
+
+    if (!habitId || !completedAt || !difficulty) {
+        throw new HttpsError(
+            "invalid-argument",
+            "habitId, completedAt, and difficulty are required",
+        );
+    }
+
+    try {
+        // Validate completion data
+        const completionTimestamp =
+            admin.firestore.Timestamp.fromMillis(completedAt);
+        const now = admin.firestore.Timestamp.now();
+
+        // Prevent future completions (Requirements 12.1)
+        if (completionTimestamp.toMillis() > now.toMillis()) {
+            throw new HttpsError(
+                "invalid-argument",
+                "Cannot record completions for future dates",
+            );
+        }
+
+        // Prevent completions more than 24 hours old
+        const timeDiff = now.toMillis() - completionTimestamp.toMillis();
+        if (timeDiff > 24 * 60 * 60 * 1000) {
+            throw new HttpsError(
+                "invalid-argument",
+                "Cannot record completions more than 24 hours old",
+            );
+        }
+
+        // Use transaction to ensure data consistency
+        const result = await db.runTransaction(async (transaction) => {
+            // Check for existing completion on the same date
+            const completionsRef = db.collection(`artifacts/${APP_ID}/completions`);
+            const existingQuery = completionsRef
+                .where("habitId", "==", habitId)
+                .where("userId", "==", userId);
+
+            const existingSnapshot = await transaction.get(existingQuery);
+
+            // Check if completion already exists for this date
+            const userTimezone = timezone || "UTC";
+            const completionDateString = completionTimestamp
+                .toDate()
+                .toISOString()
+                .split("T")[0];
+
+            const existingCompletions = existingSnapshot.docs.filter((doc) => {
+                const data = doc.data();
+                const existingDateString = data.completedAt
+                    .toDate()
+                    .toISOString()
+                    .split("T")[0];
+                const isActive = data.isActive !== false;
+                return isActive && existingDateString === completionDateString;
+            });
+
+            if (existingCompletions.length > 0) {
+                throw new HttpsError(
+                    "already-exists",
+                    "Habit already completed for this date",
+                );
+            }
+
+            // Create completion record
+            const completionData = {
+                habitId,
+                userId,
+                completedAt: completionTimestamp,
+                timezone: userTimezone,
+                notes: notes || "",
+                difficulty,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+
+            const completionRef = completionsRef.doc();
+            transaction.set(completionRef, completionData);
+
+            // Get all completions for streak calculation
+            const allCompletionsSnapshot = await transaction.get(existingQuery);
+            const allCompletions = allCompletionsSnapshot.docs
+                .filter((doc) => doc.data().isActive !== false)
+                .map((doc) => ({
+                    id: doc.id,
+                    ...doc.data(),
+                }));
+
+            // Add the new completion
+            allCompletions.push({
+                id: completionRef.id,
+                ...completionData,
+            });
+
+            // Calculate updated streak
+            const updatedStreak = calculateStreakFromCompletions(
+                allCompletions,
+                habitId,
+                userId,
+            );
+
+            // Check for new milestones
+            const streakRef = db.doc(
+                `artifacts/${APP_ID}/streaks/${userId}_${habitId}`,
+            );
+            const existingStreakDoc = await transaction.get(streakRef);
+
+            let existingMilestones: StoredMilestone[] = [];
+            if (existingStreakDoc.exists) {
+                existingMilestones = (existingStreakDoc.data()?.milestones ||
+                    []) as StoredMilestone[];
+            }
+
+            // Award streak freezes for 30-day milestones
+            let freezesAvailable = updatedStreak.freezesAvailable;
+            const newMilestones: StoredMilestone[] = [];
+            const milestoneThresholds = [7, 30, 60, 100, 365];
+
+            for (const threshold of milestoneThresholds) {
+                if (updatedStreak.currentStreak >= threshold) {
+                    const existingMilestone = existingMilestones.find(
+                        (milestone) => milestone.days === threshold,
+                    );
+                    if (!existingMilestone) {
+                        newMilestones.push({
+                            days: threshold,
+                            achievedAt: admin.firestore.FieldValue.serverTimestamp(),
+                            celebrated: false,
+                        });
+
+                        // Award freeze for 30-day milestones
+                        if (threshold === 30) {
+                            freezesAvailable += 1;
+                        }
+                    }
+                }
+            }
+
+            // Update streak data
+            const streakData = {
+                habitId,
+                userId,
+                currentStreak: updatedStreak.currentStreak,
+                bestStreak: Math.max(
+                    updatedStreak.bestStreak,
+                    existingStreakDoc.exists
+                        ? existingStreakDoc.data()?.bestStreak || 0
+                        : 0,
+                ),
+                lastCompletionDate: completionDateString,
+                streakStartDate: updatedStreak.streakStartDate,
+                freezesAvailable,
+                freezesUsed: existingStreakDoc.exists
+                    ? existingStreakDoc.data()?.freezesUsed || 0
+                    : 0,
+                milestones: [...existingMilestones, ...newMilestones],
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+
+            transaction.set(streakRef, streakData);
+
+            // Create audit log
+            const auditRef = db.collection(`artifacts/${APP_ID}/auditLogs`).doc();
+            transaction.set(auditRef, {
+                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                userId,
+                action: "record_completion",
+                entityType: "completion",
+                entityId: completionRef.id,
+                newData: completionData,
+                ipAddress: request.rawRequest?.ip,
+                userAgent: request.rawRequest?.get("user-agent"),
+            });
+
+            return {
+                completionId: completionRef.id,
+                streak: streakData,
+                newMilestones,
+            };
+        });
+
+        console.log(`Completion recorded for user ${userId}, habit ${habitId}`);
+        return {
+            success: true,
+            ...result,
+        };
+    } catch (error) {
+        console.error("Error in recordHabitCompletion:", error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "Failed to record completion");
+    }
+});
+
+/**
+ * Callable Cloud Function for undoing a goal completion
+ */
+export const undoHabitCompletion = onCall(async (request) => {
+    console.log("undoHabitCompletion function called");
+
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be signed in to undo completions",
+        );
+    }
+
+    const userId = request.auth.uid;
+    const { habitId } = request.data;
+
+    if (!habitId) {
+        throw new HttpsError("invalid-argument", "habitId is required");
+    }
+
+    const goalRef = db.doc(`artifacts/${APP_ID}/public/data/goals/${habitId}`);
+    const goalDoc = await goalRef.get();
+
+    if (!goalDoc.exists) {
+        throw new HttpsError("not-found", "Goal not found");
+    }
+
+    const goalData = goalDoc.data();
+    if (!goalData) {
+        throw new HttpsError("internal", "Goal data missing");
+    }
+    if (goalData.ownerId !== userId) {
+        throw new HttpsError("permission-denied", "You do not own this goal");
+    }
+
+    const lastCompletionId = goalData.lastCompletionId;
+
+    // Early exit if there's no completion to undo
+    if (!lastCompletionId && !goalData.latestCompletionDate) {
+        console.log(
+            "undoHabitCompletion: No completion found on goal doc. Assuming already undone.",
+        );
+        return { success: true };
+    }
+
+    console.log("undoHabitCompletion:", {
+        userId,
+        habitId,
+        lastCompletionId,
+        latestCompletionTimestamp: goalData.latestCompletionDate?.toMillis(),
+    });
+
+    const completionsRef = db.collection(`artifacts/${APP_ID}/completions`);
+    let completionDoc;
+
+    if (lastCompletionId) {
+        const completionRef = completionsRef.doc(lastCompletionId);
+        completionDoc = await completionRef.get();
+    } else {
+        // Fallback for cases where lastCompletionId might not be on the goal doc
+        const fallbackSnapshot = await completionsRef
+            .where("habitId", "==", habitId)
+            .where("userId", "==", userId)
+            .orderBy("completedAt", "desc")
+            .limit(1)
+            .get();
+
+        if (!fallbackSnapshot.empty) {
+            completionDoc = fallbackSnapshot.docs[0];
+        }
+    }
+
+    // If, after all checks, we still don't have a completion doc,
+    // it means it was already deleted. We can return success.
+    if (!completionDoc || !completionDoc.exists) {
+        console.warn(
+            `undoHabitCompletion: Completion document not found for habit ${habitId} (ID: ${lastCompletionId}). Assuming already undone.`,
+        );
+        return { success: true };
+    }
+
+    await db.runTransaction(async (transaction) => {
+        transaction.delete(completionDoc.ref);
+
+        const nextDeadline = calculateNextDeadline(
+            goalData.frequency,
+            goalData.targetDays,
+        );
+
+        transaction.update(goalRef, {
+            latestCompletionDate: null,
+            nextDeadline: admin.firestore.Timestamp.fromDate(nextDeadline),
+            currentStatus: "Yellow",
+            lastCompletionId: null,
+        });
+    });
+
+    const remainingCompletionsSnapshot = await completionsRef
+        .where("habitId", "==", habitId)
+        .where("userId", "==", userId)
+        .orderBy("completedAt", "desc")
+        .get();
+
+    const streakData = calculateStreakFromCompletions(
+        remainingCompletionsSnapshot.docs.map((doc) => doc.data()),
+        habitId,
+        userId,
+    );
+
+    const streakId = `${userId}_${habitId}`;
+    const streakRef = db.doc(`artifacts/${APP_ID}/streaks/${streakId}`);
+
+    const existingStreakDoc = await streakRef.get();
+    const existingStreakData = existingStreakDoc.exists
+        ? existingStreakDoc.data()
+        : {};
+
+    await streakRef.set(
+        {
+            ...streakData,
+            freezesAvailable: existingStreakData?.freezesAvailable || 0,
+            freezesUsed: existingStreakData?.freezesUsed || 0,
+            milestones: existingStreakData?.milestones || [],
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+    );
+
+    return { success: true };
+});
+
+/**
+ * Callable Cloud Function to use a streak freeze
+ * Requirements: 12.2, 12.3
+ */
+export const useStreakFreeze = onCall(async (request) => {
+    console.log("useStreakFreeze function called");
+
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to use streak freeze",
+        );
+    }
+
+    const userId = request.auth.uid;
+    const { habitId, missedDate } = request.data;
+
+    if (!habitId || !missedDate) {
+        throw new HttpsError(
+            "invalid-argument",
+            "habitId and missedDate are required",
+        );
+    }
+
+    try {
+        const result = await db.runTransaction(async (transaction) => {
+            const streakRef = db.doc(
+                `artifacts/${APP_ID}/streaks/${userId}_${habitId}`,
+            );
+            const streakDoc = await transaction.get(streakRef);
+
+            if (!streakDoc.exists) {
+                throw new HttpsError("not-found", "Streak data not found");
+            }
+
+            const streakData = streakDoc.data();
+
+            // Validate user ownership
+            if (streakData?.userId !== userId) {
+                throw new HttpsError(
+                    "permission-denied",
+                    "Unauthorized access to streak data",
+                );
+            }
+
+            // Check if freeze is available
+            if ((streakData?.freezesAvailable || 0) <= 0) {
+                throw new HttpsError(
+                    "failed-precondition",
+                    "No streak freezes available",
+                );
+            }
+
+            // Create a protected completion for the missed date
+            const completionsRef = db.collection(`artifacts/${APP_ID}/completions`);
+            const protectedCompletionRef = completionsRef.doc();
+
+            const protectedCompletion = {
+                habitId,
+                userId,
+                completedAt: admin.firestore.Timestamp.fromDate(new Date(missedDate)),
+                timezone: "UTC",
+                notes: "Protected by streak freeze",
+                difficulty: "easy",
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+
+            transaction.set(protectedCompletionRef, protectedCompletion);
+
+            // Update streak data
+            const updatedStreakData = {
+                ...streakData,
+                freezesAvailable: (streakData?.freezesAvailable || 0) - 1,
+                freezesUsed: (streakData?.freezesUsed || 0) + 1,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+
+            transaction.update(streakRef, updatedStreakData);
+
+            // Create audit log
+            const auditRef = db.collection(`artifacts/${APP_ID}/auditLogs`).doc();
+            transaction.set(auditRef, {
+                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                userId,
+                action: "use_streak_freeze",
+                entityType: "streak",
+                entityId: `${userId}_${habitId}`,
+                oldData: streakData,
+                newData: updatedStreakData,
+                ipAddress: request.rawRequest?.ip,
+                userAgent: request.rawRequest?.get("user-agent"),
+            });
+
+            return {
+                success: true,
+                freezesRemaining: updatedStreakData.freezesAvailable,
+            };
+        });
+
+        console.log(`Streak freeze used for user ${userId}, habit ${habitId}`);
+        return result;
+    } catch (error) {
+        console.error("Error in useStreakFreeze:", error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "Failed to use streak freeze");
+    }
+});
+
+/**
+ * Cloud Function to detect and flag suspicious activity
+ * Requirements: 12.5
+ */
+export const detectSuspiciousActivity = onSchedule(
+    {
+        schedule: "every 1 hours",
+        timeZone: "UTC",
+    },
+    async (event) => {
+        console.log("Starting detectSuspiciousActivity function");
+
+        try {
+            const now = admin.firestore.Timestamp.now();
+            const oneHourAgo = new Date(now.toMillis() - 60 * 60 * 1000);
+
+            // Check for suspicious completion patterns
+            const completionsRef = db.collection(`artifacts/${APP_ID}/completions`);
+            const recentCompletionsQuery = completionsRef
+                .where(
+                    "createdAt",
+                    ">=",
+                    admin.firestore.Timestamp.fromDate(oneHourAgo),
+                )
+                .orderBy("createdAt", "desc");
+
+            const recentCompletionsSnapshot = await recentCompletionsQuery.get();
+
+            // Group by user to detect suspicious patterns
+            const userCompletions = new Map<string, CompletionDoc[]>();
+
+            recentCompletionsSnapshot.docs.forEach((docSnapshot) => {
+                const data = docSnapshot.data() as DocumentData;
+                const userId = data.userId as string;
+
+                if (!userCompletions.has(userId)) {
+                    userCompletions.set(userId, []);
+                }
+                const completion: CompletionDoc = {
+                    ...(data as DocumentData),
+                    id: docSnapshot.id,
+                    userId,
+                    habitId: data.habitId as string,
+                    completedAt: data.completedAt as Timestamp,
+                };
+                userCompletions.get(userId)?.push(completion);
+            });
+
+            const suspiciousUsers: Array<{
+                userId: string;
+                flags: string[];
+                completions: number;
+                riskLevel: "high" | "medium" | "low";
+            }> = [];
+
+            // Analyze each user's activity
+            for (const [userId, completions] of userCompletions.entries()) {
+                const flags = [];
+
+                // Flag 1: Too many completions in one hour
+                if (completions.length > 10) {
+                    flags.push("Excessive completions in one hour");
+                }
+
+                // Flag 2: Identical timestamps
+                const timestamps = completions.map((completion) =>
+                    completion.completedAt.toMillis(),
+                );
+                const uniqueTimestamps = new Set(timestamps);
+                if (uniqueTimestamps.size < timestamps.length) {
+                    flags.push("Duplicate completion timestamps");
+                }
+
+                // Flag 3: Multiple habits completed at exact same time
+                const timestampGroups = new Map<number, CompletionDoc[]>();
+                completions.forEach((completion) => {
+                    const timestamp = completion.completedAt.toMillis();
+                    if (!timestampGroups.has(timestamp)) {
+                        timestampGroups.set(timestamp, []);
+                    }
+                    timestampGroups.get(timestamp)?.push(completion);
+                });
+
+                for (const group of timestampGroups.values()) {
+                    if (group.length > 3) {
+                        flags.push("Multiple habits completed at identical time");
+                    }
+                }
+
+                if (flags.length > 0) {
+                    suspiciousUsers.push({
+                        userId,
+                        flags,
+                        completions: completions.length,
+                        riskLevel:
+                            flags.length >= 3 ? "high" : flags.length >= 2 ? "medium" : "low",
+                    });
+                }
+            }
+
+            // Log and flag suspicious users
+            if (suspiciousUsers.length > 0) {
+                console.log(
+                    `Found ${suspiciousUsers.length} users with suspicious activity`,
+                );
+
+                const batch = db.batch();
+
+                suspiciousUsers.forEach((user) => {
+                    const flagRef = db
+                        .collection(`artifacts/${APP_ID}/suspiciousActivity`)
+                        .doc();
+                    batch.set(flagRef, {
+                        userId: user.userId,
+                        flags: user.flags,
+                        riskLevel: user.riskLevel,
+                        completionsCount: user.completions,
+                        detectedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        reviewed: false,
+                    });
+
+                    console.warn(
+                        `Suspicious activity detected for user ${user.userId}:`,
+                        user.flags,
+                    );
+                });
+
+                await batch.commit();
+            }
+
+            console.log("detectSuspiciousActivity function completed successfully");
+        } catch (error) {
+            console.error("Error in detectSuspiciousActivity:", error);
+            throw error;
+        }
+    },
+);
+
+/**
+ * Helper function to calculate streak from completions
+ */
+function calculateStreakFromCompletions(
+    completions: any[],
+    habitId: string,
+    userId: string,
+) {
+    if (completions.length === 0) {
+        return {
+            habitId,
+            userId,
+            currentStreak: 0,
+            bestStreak: 0,
+            lastCompletionDate: "",
+            streakStartDate: new Date().toISOString().split("T")[0],
+            freezesAvailable: 0,
+            freezesUsed: 0,
+            milestones: [],
+        };
+    }
+
+    // Get unique completion dates and sort them
+    const completionDates = completions
+        .map((comp) => comp.completedAt.toDate().toISOString().split("T")[0])
+        .filter((date, index, arr) => arr.indexOf(date) === index)
+        .sort();
+
+    // Calculate current streak
+    let currentStreak = 0;
+    let streakStartDate = "";
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+
+    const lastCompletionDate = completionDates[completionDates.length - 1];
+    if (lastCompletionDate === today || lastCompletionDate === yesterday) {
+        currentStreak = 1;
+        streakStartDate = lastCompletionDate;
+
+        // Count backwards for consecutive days
+        for (let i = completionDates.length - 2; i >= 0; i--) {
+            const currentDate = new Date(completionDates[i + 1]);
+            const previousDate = new Date(completionDates[i]);
+            const dayDiff =
+                (currentDate.getTime() - previousDate.getTime()) /
+                (1000 * 60 * 60 * 24);
+
+            if (dayDiff === 1) {
+                currentStreak++;
+                streakStartDate = completionDates[i];
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Calculate best streak
+    let bestStreak = 0;
+    let tempStreak = 1;
+
+    for (let i = 1; i < completionDates.length; i++) {
+        const currentDate = new Date(completionDates[i]);
+        const previousDate = new Date(completionDates[i - 1]);
+        const dayDiff =
+            (currentDate.getTime() - previousDate.getTime()) / (1000 * 60 * 60 * 24);
+
+        if (dayDiff === 1) {
+            tempStreak++;
+        } else {
+            bestStreak = Math.max(bestStreak, tempStreak);
+            tempStreak = 1;
+        }
+    }
+    bestStreak = Math.max(bestStreak, tempStreak, currentStreak);
+
+    return {
+        habitId,
+        userId,
+        currentStreak,
+        bestStreak,
+        lastCompletionDate,
+        streakStartDate,
+        freezesAvailable: 0,
+        freezesUsed: 0,
+        milestones: [],
+    };
+}
+
+function calculateNextDeadline(
+    frequency: "daily" | "weekly" | "3x_a_week",
+    targetDays: string[],
+    reference?: Date,
+): Date {
+    const now = reference || new Date();
+    const currentDay = now.getDay();
+
+    const dayMap: Record<string, number> = {
+        Sunday: 0,
+        Monday: 1,
+        Tuesday: 2,
+        Wednesday: 3,
+        Thursday: 4,
+        Friday: 5,
+        Saturday: 6,
+    };
+
+    const targetDayNumbers = targetDays
+        .map((day) => dayMap[day] ?? -1)
+        .filter((day) => day >= 0)
+        .sort((a, b) => a - b);
+
+    if (frequency === "daily" || targetDayNumbers.length === 0) {
+        const deadline = new Date(now);
+        deadline.setHours(23, 59, 59, 999);
+        return deadline;
+    }
+
+    if (frequency === "weekly" || frequency === "3x_a_week") {
+        let daysToAdd = 0;
+        let found = false;
+
+        for (let i = 1; i <= 7; i++) {
+            const checkDay = (currentDay + i) % 7;
+            if (targetDayNumbers.includes(checkDay)) {
+                daysToAdd = i;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            const firstTargetDay = targetDayNumbers[0];
+            daysToAdd = (firstTargetDay - currentDay + 7) % 7;
+            if (daysToAdd === 0) daysToAdd = 7;
+        }
+
+        const deadline = new Date(now);
+        deadline.setDate(deadline.getDate() + daysToAdd);
+        deadline.setHours(23, 59, 59, 999);
+        return deadline;
+    }
+
+    const fallback = new Date(now);
+    fallback.setHours(fallback.getHours() + 24);
+    return fallback;
+}
 
 /**
  * Scheduled Cloud Function that runs every hour to check goal deadlines
@@ -291,3 +1055,1042 @@ export const sendNudge = onCall(async (request) => {
         throw new HttpsError("internal", "Failed to send nudge");
     }
 });
+
+/**
+ * Cloud Function triggered when a friend request is created
+ * Sends FCM notification to the receiver
+ * Requirements: 7.1, 7.2
+ */
+export const sendFriendRequestNotification = onDocumentCreated(
+    `artifacts/${APP_ID}/friendRequests/{requestId}`,
+    async (event) => {
+        console.log("sendFriendRequestNotification triggered");
+
+        try {
+            const requestData = event.data?.data();
+            if (!requestData) {
+                console.log("No request data found");
+                return;
+            }
+
+            const { senderId, senderName, receiverId, status } = requestData;
+
+            // Only send notification for pending requests
+            if (status !== "pending") {
+                console.log(`Request status is ${status}, not sending notification`);
+                return;
+            }
+
+            // Get receiver's FCM token
+            const receiverRef = db.doc(`artifacts/${APP_ID}/users/${receiverId}`);
+            const receiverDoc = await receiverRef.get();
+
+            if (!receiverDoc.exists) {
+                console.log(`Receiver ${receiverId} not found`);
+                return;
+            }
+
+            const receiverData = receiverDoc.data();
+            const fcmToken = receiverData?.fcmToken;
+
+            if (!fcmToken) {
+                console.log(`Receiver ${receiverId} has no FCM token`);
+                return;
+            }
+
+            // Send FCM notification
+            const message = {
+                token: fcmToken,
+                notification: {
+                    title: "New Friend Request",
+                    body: `${senderName} wants to be your accountability partner`,
+                },
+                data: {
+                    type: "friend_request",
+                    senderId: senderId,
+                    senderName: senderName,
+                    requestId: event.params.requestId,
+                },
+            };
+
+            await admin.messaging().send(message);
+            console.log(
+                `Friend request notification sent to ${receiverId} from ${senderName}`,
+            );
+        } catch (error) {
+            // Log error but don't throw - we don't want to block the friend request creation
+            console.error("Error sending friend request notification:", error);
+        }
+    },
+);
+
+/**
+ * Cloud Function triggered when a friend request is updated
+ * Sends FCM notification to the sender when request is accepted
+ * Requirements: 7.4
+ */
+export const sendFriendRequestAcceptedNotification = onDocumentUpdated(
+    `artifacts/${APP_ID}/friendRequests/{requestId}`,
+    async (event) => {
+        console.log("sendFriendRequestAcceptedNotification triggered");
+
+        try {
+            const beforeData = event.data?.before.data();
+            const afterData = event.data?.after.data();
+
+            if (!beforeData || !afterData) {
+                console.log("No before/after data found");
+                return;
+            }
+
+            // Check if status changed from pending to accepted
+            if (beforeData.status !== "pending" || afterData.status !== "accepted") {
+                console.log(
+                    `Status change from ${beforeData.status} to ${afterData.status}, not sending notification`,
+                );
+                return;
+            }
+
+            const { senderId, receiverId } = afterData;
+
+            // Get sender's FCM token
+            const senderRef = db.doc(`artifacts/${APP_ID}/users/${senderId}`);
+            const senderDoc = await senderRef.get();
+
+            if (!senderDoc.exists) {
+                console.log(`Sender ${senderId} not found`);
+                return;
+            }
+
+            const senderData = senderDoc.data();
+            const fcmToken = senderData?.fcmToken;
+
+            if (!fcmToken) {
+                console.log(`Sender ${senderId} has no FCM token`);
+                return;
+            }
+
+            // Get receiver's name for the notification
+            const receiverRef = db.doc(`artifacts/${APP_ID}/users/${receiverId}`);
+            const receiverDoc = await receiverRef.get();
+
+            if (!receiverDoc.exists) {
+                console.log(`Receiver ${receiverId} not found`);
+                return;
+            }
+
+            const receiverData = receiverDoc.data();
+            const receiverName = receiverData?.displayName || "Someone";
+
+            // Send FCM notification
+            const message = {
+                token: fcmToken,
+                notification: {
+                    title: "Friend Request Accepted!",
+                    body: `${receiverName} accepted your friend request`,
+                },
+                data: {
+                    type: "friend_request_accepted",
+                    receiverId: receiverId,
+                    receiverName: receiverName,
+                    requestId: event.params.requestId,
+                },
+            };
+
+            await admin.messaging().send(message);
+            console.log(
+                `Friend request accepted notification sent to ${senderId} about ${receiverName}`,
+            );
+        } catch (error) {
+            // Log error but don't throw - we don't want to block the friend request acceptance
+            console.error(
+                "Error sending friend request accepted notification:",
+                error,
+            );
+        }
+    },
+);
+
+/**
+ * Cloud Function triggered when a nudge is created
+ * Sends FCM notification to the receiver
+ * Requirements: 3.4, 5.1, 5.2
+ */
+export const sendNudgeNotification = onDocumentCreated(
+    `artifacts/${APP_ID}/nudges/{nudgeId}`,
+    async (event) => {
+        console.log("sendNudgeNotification triggered");
+
+        try {
+            const nudgeData = event.data?.data();
+            if (!nudgeData) {
+                console.log("No nudge data found");
+                return;
+            }
+
+            const { senderId, senderName, receiverId, goalId, goalDescription } =
+                nudgeData;
+
+            // Get receiver's FCM token
+            const receiverRef = db.doc(`artifacts/${APP_ID}/users/${receiverId}`);
+            const receiverDoc = await receiverRef.get();
+
+            if (!receiverDoc.exists) {
+                console.log(`Receiver ${receiverId} not found`);
+                return;
+            }
+
+            const receiverData = receiverDoc.data();
+            const fcmToken = receiverData?.fcmToken;
+
+            if (!fcmToken) {
+                console.log(`Receiver ${receiverId} has no FCM token`);
+                return;
+            }
+
+            // Send FCM notification with proper format
+            const message = {
+                token: fcmToken,
+                notification: {
+                    title: `👊 ${senderName} nudged you!`,
+                    body: `Don't forget: ${goalDescription}`,
+                },
+                data: {
+                    type: "nudge",
+                    goalId: goalId,
+                    senderId: senderId,
+                    senderName: senderName,
+                    nudgeId: event.params.nudgeId,
+                },
+                android: {
+                    priority: "high" as const,
+                },
+                apns: {
+                    payload: {
+                        aps: {
+                            badge: 1,
+                            sound: "default",
+                        },
+                    },
+                },
+            };
+
+            await admin.messaging().send(message);
+            console.log(
+                `Nudge notification sent to ${receiverId} from ${senderName} about goal: ${goalDescription}`,
+            );
+        } catch (error) {
+            // Log error but don't throw - we don't want to block the nudge creation
+            console.error("Error sending nudge notification:", error);
+        }
+    },
+);
+
+/**
+ * Scheduled Cloud Function to cleanup old nudges (older than 7 days)
+ * Runs daily to reduce storage costs and maintain performance
+ * Requirements: 8.5
+ */
+export const cleanupOldNudges = onSchedule(
+    {
+        schedule: "every 24 hours",
+        timeZone: "UTC",
+    },
+    async (event) => {
+        console.log("Starting cleanupOldNudges function");
+
+        try {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const cutoffTimestamp = admin.firestore.Timestamp.fromDate(sevenDaysAgo);
+
+            // Query old nudges
+            const nudgesRef = db.collection(`artifacts/${APP_ID}/nudges`);
+            const oldNudgesQuery = nudgesRef
+                .where("createdAt", "<", cutoffTimestamp)
+                .limit(500); // Process in batches to avoid timeout
+
+            const snapshot = await oldNudgesQuery.get();
+
+            if (snapshot.empty) {
+                console.log("No old nudges to cleanup");
+                return;
+            }
+
+            console.log(`Found ${snapshot.size} old nudges to delete`);
+
+            // Delete in batches
+            const batch = db.batch();
+            snapshot.docs.forEach((doc) => {
+                batch.delete(doc.ref);
+            });
+
+            await batch.commit();
+            console.log(`Successfully deleted ${snapshot.size} old nudges`);
+
+            // If we hit the limit, there might be more to delete
+            if (snapshot.size === 500) {
+                console.log(
+                    "Batch limit reached, more nudges may need cleanup in next run",
+                );
+            }
+        } catch (error) {
+            console.error("Error in cleanupOldNudges:", error);
+            throw error;
+        }
+    },
+);
+
+/**
+ * Scheduled Cloud Function to send streak risk reminders
+ * Runs every hour to check for users who haven't completed their habits
+ * and are at risk of breaking their streaks
+ * Requirements: 11.1
+ */
+export const sendStreakRiskReminders = onSchedule(
+    {
+        schedule: "every 1 hours",
+        timeZone: "UTC",
+    },
+    async (event) => {
+        console.log("Starting sendStreakRiskReminders function");
+
+        try {
+            const now = new Date();
+            const currentHour = now.getUTCHours();
+
+            // Get all active streaks
+            const streaksRef = db.collection(`artifacts/${APP_ID}/streaks`);
+            const streaksSnapshot = await streaksRef.get();
+
+            console.log(`Processing ${streaksSnapshot.size} streak records`);
+
+            const remindersToSend: Array<{
+                userId: string;
+                habitId: string;
+                habitName: string;
+                currentStreak: number;
+                fcmToken: string;
+            }> = [];
+
+            for (const streakDoc of streaksSnapshot.docs) {
+                const streakData = streakDoc.data();
+
+                // Only consider active streaks
+                if (streakData.currentStreak > 0) {
+                    const userId = streakData.userId;
+
+                    // Get user's notification preferences and timezone
+                    const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+                    const userDoc = await userRef.get();
+
+                    if (!userDoc.exists) continue;
+
+                    const userData = userDoc.data();
+                    const fcmToken = userData?.fcmToken;
+
+                    if (!fcmToken) continue;
+
+                    // Get notification preferences
+                    const settingsRef = db.doc(
+                        `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
+                    );
+                    const settingsDoc = await settingsRef.get();
+
+                    let reminderTime = 2; // Default 2 hours before day end
+                    let remindersEnabled = true;
+
+                    if (settingsDoc.exists) {
+                        const settings =
+                            (settingsDoc.data() as {
+                                preferences?: {
+                                    reminderTime?: number;
+                                    streakReminders?: boolean;
+                                };
+                            }) || {};
+                        reminderTime = settings.preferences?.reminderTime ?? 2;
+                        remindersEnabled =
+                            settings.preferences?.streakReminders !== false;
+                    }
+
+                    if (!remindersEnabled) continue;
+
+                    // Calculate reminder time (assuming day ends at 11 PM = 23:00 UTC)
+                    const dayEndHour = 23;
+                    const reminderHour = dayEndHour - reminderTime;
+
+                    // Check if it's time to send reminder (within 1 hour window)
+                    if (currentHour === reminderHour) {
+                        // Check if user has completed habit today
+                        const today = now.toISOString().split("T")[0];
+                        const completionsRef = db.collection(
+                            `artifacts/${APP_ID}/completions`,
+                        );
+                        const todayCompletionsQuery = completionsRef
+                            .where("habitId", "==", streakData.habitId)
+                            .where("userId", "==", userId);
+
+                        const completionsSnapshot = await todayCompletionsQuery.get();
+
+                        let hasCompletedToday = false;
+                        for (const completionDoc of completionsSnapshot.docs) {
+                            const completionData = completionDoc.data();
+                            const completionDate = completionData.completedAt
+                                .toDate()
+                                .toISOString()
+                                .split("T")[0];
+                            if (completionDate === today) {
+                                hasCompletedToday = true;
+                                break;
+                            }
+                        }
+
+                        if (!hasCompletedToday) {
+                            // Get habit name
+                            const goalRef = db.doc(
+                                `artifacts/${APP_ID}/public/data/goals/${streakData.habitId}`,
+                            );
+                            const goalDoc = await goalRef.get();
+                            const habitName = goalDoc.exists
+                                ? goalDoc.data()?.description || "Your habit"
+                                : "Your habit";
+
+                            remindersToSend.push({
+                                userId,
+                                habitId: streakData.habitId,
+                                habitName,
+                                currentStreak: streakData.currentStreak,
+                                fcmToken,
+                            });
+                        }
+                    }
+                }
+            }
+
+            console.log(`Sending ${remindersToSend.length} streak risk reminders`);
+
+            // Send notifications
+            const notificationPromises = remindersToSend.map(async (reminder) => {
+                const message = createStreakRiskMessage(
+                    reminder.habitName,
+                    reminder.currentStreak,
+                );
+
+                const fcmMessage = {
+                    token: reminder.fcmToken,
+                    notification: {
+                        title: "⚠️ Don't Break Your Streak!",
+                        body: message,
+                    },
+                    data: {
+                        type: "streak_reminder",
+                        habitId: reminder.habitId,
+                        habitName: reminder.habitName,
+                        currentStreak: reminder.currentStreak.toString(),
+                    },
+                    android: {
+                        priority: "high" as const,
+                    },
+                    apns: {
+                        payload: {
+                            aps: {
+                                badge: 1,
+                                sound: "default",
+                            },
+                        },
+                    },
+                };
+
+                try {
+                    await admin.messaging().send(fcmMessage);
+                    console.log(
+                        `Streak reminder sent to ${reminder.userId} for ${reminder.habitName}`,
+                    );
+                } catch (error) {
+                    console.error(
+                        `Failed to send streak reminder to ${reminder.userId}:`,
+                        error,
+                    );
+                }
+            });
+
+            await Promise.all(notificationPromises);
+            console.log("sendStreakRiskReminders function completed successfully");
+        } catch (error) {
+            console.error("Error in sendStreakRiskReminders:", error);
+            throw error;
+        }
+    },
+);
+
+/**
+ * Scheduled Cloud Function to send weekly progress notifications
+ * Runs every Sunday at 9 AM UTC to send weekly progress updates
+ * Requirements: 11.4
+ */
+export const sendWeeklyProgressNotifications = onSchedule(
+    {
+        schedule: "0 9 * * 0", // Every Sunday at 9 AM UTC
+        timeZone: "UTC",
+    },
+    async (event) => {
+        console.log("Starting sendWeeklyProgressNotifications function");
+
+        try {
+            const now = new Date();
+            const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+            // Get all active streaks (longer than 14 days)
+            const streaksRef = db.collection(`artifacts/${APP_ID}/streaks`);
+            const streaksSnapshot = await streaksRef.get();
+
+            console.log(
+                `Processing ${streaksSnapshot.size} streak records for weekly progress`,
+            );
+
+            const progressNotifications: Array<{
+                userId: string;
+                habitId: string;
+                habitName: string;
+                currentStreak: number;
+                weeklyCompletions: number;
+                fcmToken: string;
+            }> = [];
+
+            for (const streakDoc of streaksSnapshot.docs) {
+                const streakData = streakDoc.data();
+
+                // Only consider long streaks (14+ days)
+                if (streakData.currentStreak >= 14) {
+                    const userId = streakData.userId;
+
+                    // Get user's notification preferences
+                    const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+                    const userDoc = await userRef.get();
+
+                    if (!userDoc.exists) continue;
+
+                    const userData = userDoc.data();
+                    const fcmToken = userData?.fcmToken;
+
+                    if (!fcmToken) continue;
+
+                    // Check notification preferences
+                    const settingsRef = db.doc(
+                        `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
+                    );
+                    const settingsDoc = await settingsRef.get();
+
+                    let weeklyProgressEnabled = true;
+                    if (settingsDoc.exists) {
+                        const settings =
+                            (settingsDoc.data() as {
+                                preferences?: { weeklyProgress?: boolean };
+                            }) || {};
+                        weeklyProgressEnabled =
+                            settings.preferences?.weeklyProgress !== false;
+                    }
+
+                    if (!weeklyProgressEnabled) continue;
+
+                    // Count completions in the last week
+                    const completionsRef = db.collection(
+                        `artifacts/${APP_ID}/completions`,
+                    );
+                    const weeklyCompletionsQuery = completionsRef
+                        .where("habitId", "==", streakData.habitId)
+                        .where("userId", "==", userId)
+                        .where(
+                            "completedAt",
+                            ">=",
+                            admin.firestore.Timestamp.fromDate(oneWeekAgo),
+                        );
+
+                    const weeklyCompletionsSnapshot = await weeklyCompletionsQuery.get();
+                    const weeklyCompletions = weeklyCompletionsSnapshot.size;
+
+                    // Get habit name
+                    const goalRef = db.doc(
+                        `artifacts/${APP_ID}/public/data/goals/${streakData.habitId}`,
+                    );
+                    const goalDoc = await goalRef.get();
+                    const habitName = goalDoc.exists
+                        ? goalDoc.data()?.description || "Your habit"
+                        : "Your habit";
+
+                    progressNotifications.push({
+                        userId,
+                        habitId: streakData.habitId,
+                        habitName,
+                        currentStreak: streakData.currentStreak,
+                        weeklyCompletions,
+                        fcmToken,
+                    });
+                }
+            }
+
+            console.log(
+                `Sending ${progressNotifications.length} weekly progress notifications`,
+            );
+
+            // Send notifications
+            const notificationPromises = progressNotifications.map(
+                async (progress) => {
+                    const message = createWeeklyProgressMessage(
+                        progress.habitName,
+                        progress.currentStreak,
+                        progress.weeklyCompletions,
+                    );
+
+                    const fcmMessage = {
+                        token: progress.fcmToken,
+                        notification: {
+                            title: "📈 Weekly Progress Update",
+                            body: message,
+                        },
+                        data: {
+                            type: "weekly_progress",
+                            habitId: progress.habitId,
+                            habitName: progress.habitName,
+                            currentStreak: progress.currentStreak.toString(),
+                            weeklyCompletions: progress.weeklyCompletions.toString(),
+                        },
+                        android: {
+                            priority: "normal" as const,
+                        },
+                        apns: {
+                            payload: {
+                                aps: {
+                                    badge: 1,
+                                    sound: "default",
+                                },
+                            },
+                        },
+                    };
+
+                    try {
+                        await admin.messaging().send(fcmMessage);
+                        console.log(
+                            `Weekly progress notification sent to ${progress.userId} for ${progress.habitName}`,
+                        );
+                    } catch (error) {
+                        console.error(
+                            `Failed to send weekly progress notification to ${progress.userId}:`,
+                            error,
+                        );
+                    }
+                },
+            );
+
+            await Promise.all(notificationPromises);
+            console.log(
+                "sendWeeklyProgressNotifications function completed successfully",
+            );
+        } catch (error) {
+            console.error("Error in sendWeeklyProgressNotifications:", error);
+            throw error;
+        }
+    },
+);
+
+/**
+ * Cloud Function triggered when a streak milestone is achieved
+ * Sends immediate celebration notification
+ * Requirements: 11.2
+ */
+export const sendMilestoneNotification = onDocumentCreated(
+    `artifacts/${APP_ID}/streaks/{streakId}`,
+    async (event) => {
+        console.log("sendMilestoneNotification triggered");
+
+        try {
+            const streakData = event.data?.data();
+            if (!streakData) {
+                console.log("No streak data found");
+                return;
+            }
+
+            const { userId, habitId, currentStreak, milestones } = streakData;
+
+            // Check if there are any uncelebrated milestones
+            const uncelebratedMilestones =
+                milestones?.filter((m: any) => !m.celebrated) || [];
+
+            if (uncelebratedMilestones.length === 0) {
+                console.log("No uncelebrated milestones found");
+                return;
+            }
+
+            // Get user's FCM token and preferences
+            const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+            const userDoc = await userRef.get();
+
+            if (!userDoc.exists) {
+                console.log(`User ${userId} not found`);
+                return;
+            }
+
+            const userData = userDoc.data();
+            const fcmToken = userData?.fcmToken;
+
+            if (!fcmToken) {
+                console.log(`User ${userId} has no FCM token`);
+                return;
+            }
+
+            // Check notification preferences
+            const settingsRef = db.doc(
+                `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
+            );
+            const settingsDoc = await settingsRef.get();
+
+            let milestonesEnabled = true;
+            if (settingsDoc.exists) {
+                const settings =
+                    (settingsDoc.data() as {
+                        preferences?: { milestoneNotifications?: boolean };
+                    }) || {};
+                milestonesEnabled =
+                    settings.preferences?.milestoneNotifications !== false;
+            }
+
+            if (!milestonesEnabled) {
+                console.log(`User ${userId} has milestone notifications disabled`);
+                return;
+            }
+
+            // Get habit name
+            const goalRef = db.doc(
+                `artifacts/${APP_ID}/public/data/goals/${habitId}`,
+            );
+            const goalDoc = await goalRef.get();
+            const habitName = goalDoc.exists
+                ? goalDoc.data()?.description || "Your habit"
+                : "Your habit";
+
+            // Send notification for the latest milestone
+            const latestMilestone =
+                uncelebratedMilestones[uncelebratedMilestones.length - 1];
+            const message = createMilestoneMessage(habitName, latestMilestone);
+
+            const fcmMessage = {
+                token: fcmToken,
+                notification: {
+                    title: "🎉 Milestone Achieved!",
+                    body: message,
+                },
+                data: {
+                    type: "streak_milestone",
+                    habitId,
+                    habitName,
+                    milestoneDays: latestMilestone.days.toString(),
+                    currentStreak: currentStreak.toString(),
+                },
+                android: {
+                    priority: "high" as const,
+                },
+                apns: {
+                    payload: {
+                        aps: {
+                            badge: 1,
+                            sound: "default",
+                        },
+                    },
+                },
+            };
+
+            await admin.messaging().send(fcmMessage);
+            console.log(
+                `Milestone notification sent to ${userId} for ${latestMilestone.days} day milestone`,
+            );
+
+            // Mark milestone as celebrated
+            const streakRef = db.doc(
+                `artifacts/${APP_ID}/streaks/${event.params.streakId}`,
+            );
+            const updatedMilestones = milestones.map((m: any) =>
+                m.days === latestMilestone.days ? { ...m, celebrated: true } : m,
+            );
+
+            await streakRef.update({ milestones: updatedMilestones });
+            console.log(
+                `Milestone marked as celebrated for ${latestMilestone.days} days`,
+            );
+        } catch (error) {
+            console.error("Error sending milestone notification:", error);
+        }
+    },
+);
+
+/**
+ * Cloud Function triggered when a streak is broken (currentStreak becomes 0)
+ * Sends recovery notification the next day
+ * Requirements: 11.3
+ */
+export const scheduleRecoveryNotification = onDocumentUpdated(
+    `artifacts/${APP_ID}/streaks/{streakId}`,
+    async (event) => {
+        console.log("scheduleRecoveryNotification triggered");
+
+        try {
+            const beforeData = event.data?.before.data();
+            const afterData = event.data?.after.data();
+
+            if (!beforeData || !afterData) {
+                console.log("No before/after data found");
+                return;
+            }
+
+            // Check if streak was broken (went from > 0 to 0)
+            if (beforeData.currentStreak > 0 && afterData.currentStreak === 0) {
+                const { userId, habitId, bestStreak } = afterData;
+
+                console.log(
+                    `Streak broken for user ${userId}, habit ${habitId}. Previous best: ${bestStreak}`,
+                );
+
+                // Schedule recovery notification for tomorrow
+                // Note: In a real implementation, you might want to use Cloud Tasks for precise scheduling
+                // For now, we'll create a document that the daily cleanup function can process
+                const recoveryRef = db
+                    .collection(`artifacts/${APP_ID}/recoveryNotifications`)
+                    .doc();
+                await recoveryRef.set({
+                    userId,
+                    habitId,
+                    bestStreak,
+                    scheduledFor: admin.firestore.Timestamp.fromDate(
+                        new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+                    ),
+                    sent: false,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                console.log(`Recovery notification scheduled for user ${userId}`);
+            }
+        } catch (error) {
+            console.error("Error scheduling recovery notification:", error);
+        }
+    },
+);
+
+/**
+ * Scheduled Cloud Function to send pending recovery notifications
+ * Runs every hour to check for scheduled recovery notifications
+ * Requirements: 11.3
+ */
+export const sendPendingRecoveryNotifications = onSchedule(
+    {
+        schedule: "every 1 hours",
+        timeZone: "UTC",
+    },
+    async (event) => {
+        console.log("Starting sendPendingRecoveryNotifications function");
+
+        try {
+            const now = admin.firestore.Timestamp.now();
+
+            // Get pending recovery notifications that are due
+            const recoveryRef = db.collection(
+                `artifacts/${APP_ID}/recoveryNotifications`,
+            );
+            const pendingQuery = recoveryRef
+                .where("sent", "==", false)
+                .where("scheduledFor", "<=", now)
+                .limit(100);
+
+            const snapshot = await pendingQuery.get();
+
+            if (snapshot.empty) {
+                console.log("No pending recovery notifications");
+                return;
+            }
+
+            console.log(`Processing ${snapshot.size} pending recovery notifications`);
+
+            const batch = db.batch();
+
+            for (const doc of snapshot.docs) {
+                const data = doc.data();
+                const { userId, habitId, bestStreak } = data;
+
+                try {
+                    // Get user's FCM token and preferences
+                    const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+                    const userDoc = await userRef.get();
+
+                    if (!userDoc.exists) {
+                        console.log(
+                            `User ${userId} not found, marking notification as sent`,
+                        );
+                        batch.update(doc.ref, { sent: true });
+                        continue;
+                    }
+
+                    const userData = userDoc.data();
+                    const fcmToken = userData?.fcmToken;
+
+                    if (!fcmToken) {
+                        console.log(
+                            `User ${userId} has no FCM token, marking notification as sent`,
+                        );
+                        batch.update(doc.ref, { sent: true });
+                        continue;
+                    }
+
+                    // Check notification preferences
+                    const settingsRef = db.doc(
+                        `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
+                    );
+                    const settingsDoc = await settingsRef.get();
+
+                    let recoveryEnabled = true;
+                    if (settingsDoc.exists) {
+                        const settings =
+                            (settingsDoc.data() as {
+                                preferences?: { recoveryNotifications?: boolean };
+                            }) || {};
+                        recoveryEnabled =
+                            settings.preferences?.recoveryNotifications !== false;
+                    }
+
+                    if (!recoveryEnabled) {
+                        console.log(
+                            `User ${userId} has recovery notifications disabled, marking as sent`,
+                        );
+                        batch.update(doc.ref, { sent: true });
+                        continue;
+                    }
+
+                    // Get habit name
+                    const goalRef = db.doc(
+                        `artifacts/${APP_ID}/public/data/goals/${habitId}`,
+                    );
+                    const goalDoc = await goalRef.get();
+                    const habitName = goalDoc.exists
+                        ? goalDoc.data()?.description || "Your habit"
+                        : "Your habit";
+
+                    // Send recovery notification
+                    const message = createRecoveryMessage(habitName, bestStreak);
+
+                    const fcmMessage = {
+                        token: fcmToken,
+                        notification: {
+                            title: "💪 Ready for a Comeback?",
+                            body: message,
+                        },
+                        data: {
+                            type: "streak_recovery",
+                            habitId,
+                            habitName,
+                            previousBestStreak: bestStreak.toString(),
+                        },
+                        android: {
+                            priority: "normal" as const,
+                        },
+                        apns: {
+                            payload: {
+                                aps: {
+                                    badge: 1,
+                                    sound: "default",
+                                },
+                            },
+                        },
+                    };
+
+                    await admin.messaging().send(fcmMessage);
+                    console.log(
+                        `Recovery notification sent to ${userId} for ${habitName}`,
+                    );
+
+                    // Mark as sent
+                    batch.update(doc.ref, { sent: true, sentAt: now });
+                } catch (error) {
+                    console.error(
+                        `Error sending recovery notification to ${userId}:`,
+                        error,
+                    );
+                    // Mark as sent to avoid retrying
+                    const errorMessage =
+                        error instanceof Error ? error.message : "Unknown error";
+                    batch.update(doc.ref, { sent: true, error: errorMessage });
+                }
+            }
+
+            await batch.commit();
+            console.log(
+                "sendPendingRecoveryNotifications function completed successfully",
+            );
+        } catch (error) {
+            console.error("Error in sendPendingRecoveryNotifications:", error);
+            throw error;
+        }
+    },
+);
+
+// Helper functions for creating notification messages
+
+function createStreakRiskMessage(
+    habitName: string,
+    currentStreak: number,
+): string {
+    if (currentStreak === 1) {
+        return `Don't let your "${habitName}" streak end at just 1 day! Complete it now to keep going! 💪`;
+    } else if (currentStreak < 7) {
+        return `You're ${currentStreak} days into your "${habitName}" streak! Don't break it now - complete it today! 🔥`;
+    } else if (currentStreak < 30) {
+        return `Your ${currentStreak}-day "${habitName}" streak is at risk! You've come so far - don't give up now! ⚡`;
+    } else {
+        return `Your amazing ${currentStreak}-day "${habitName}" streak is in danger! Protect your incredible progress! 🛡️`;
+    }
+}
+
+function createMilestoneMessage(habitName: string, milestone: any): string {
+    const { days } = milestone;
+
+    if (days === 7) {
+        return `Amazing! You've completed "${habitName}" for 7 days straight! 🔥`;
+    } else if (days === 30) {
+        return `Incredible! You've hit a 30-day streak with "${habitName}"! You've earned a streak freeze! 🛡️`;
+    } else if (days === 60) {
+        return `Outstanding! 60 days of "${habitName}" - you're building a life-changing habit! 💪`;
+    } else if (days === 100) {
+        return `Legendary! 100 days of "${habitName}" - you're in the top 1% of habit builders! 🏆`;
+    } else if (days === 365) {
+        return `INCREDIBLE! A full year of "${habitName}" - you've achieved something truly extraordinary! 🌟`;
+    } else {
+        return `Congratulations! You've completed "${habitName}" for ${days} days in a row! 🎉`;
+    }
+}
+
+function createRecoveryMessage(
+    habitName: string,
+    previousBestStreak: number,
+): string {
+    if (previousBestStreak === 0) {
+        return `Ready to start fresh with "${habitName}"? Every expert was once a beginner! 🌱`;
+    } else if (previousBestStreak < 7) {
+        return `You had a ${previousBestStreak}-day streak with "${habitName}" before. Ready to beat that record? 🎯`;
+    } else if (previousBestStreak < 30) {
+        return `You achieved ${previousBestStreak} days with "${habitName}" before - you can do it again and go even further! 🚀`;
+    } else {
+        return `You had an incredible ${previousBestStreak}-day streak with "${habitName}"! That shows you have what it takes. Ready for round 2? 💪`;
+    }
+}
+
+function createWeeklyProgressMessage(
+    habitName: string,
+    currentStreak: number,
+    weeklyCompletions: number,
+): string {
+    const completionRate = Math.round((weeklyCompletions / 7) * 100);
+
+    if (completionRate === 100) {
+        return `Perfect week! You're ${currentStreak} days strong with "${habitName}" and completed it every day this week! 🔥`;
+    } else if (completionRate >= 85) {
+        return `Great week! Your "${habitName}" streak is at ${currentStreak} days with ${weeklyCompletions}/7 completions this week! 📈`;
+    } else {
+        return `Your "${habitName}" streak is at ${currentStreak} days. This week: ${weeklyCompletions}/7 completions. Keep pushing! 💪`;
+    }
+}

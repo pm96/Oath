@@ -1,9 +1,8 @@
-import { Button, ButtonText } from "@/components/ui/button";
-import { Heading } from "@/components/ui/heading";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
+import { Button } from "@/components/ui/Button";
+import { Heading, Text } from "@/components/ui/Text";
 import { useRouter } from "expo-router";
 import React from "react";
+import { View } from "react-native";
 
 /**
  * NotFoundPage
@@ -15,19 +14,31 @@ export default function NotFoundPage() {
     const router = useRouter();
 
     return (
-        <VStack className="flex-1 justify-center items-center p-6" space="xl">
-            <Text className="text-7xl font-bold text-typography-900">404</Text>
-            <VStack space="md" className="items-center">
-                <Heading size="xl" className="text-center">
+        <View
+            style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+                padding: 24,
+                gap: 32,
+            }}
+        >
+            <Text
+                size="xxl"
+                weight="bold"
+                style={{ fontSize: 72, textAlign: "center" }}
+            >
+                404
+            </Text>
+            <View style={{ alignItems: "center", gap: 16 }}>
+                <Heading size="xl" style={{ textAlign: "center" }}>
                     Page Not Found
                 </Heading>
-                <Text className="text-center text-typography-600">
+                <Text color="muted" style={{ textAlign: "center" }}>
                     The page you&apos;re looking for doesn&apos;t exist or has been moved.
                 </Text>
-            </VStack>
-            <Button onPress={() => router.replace("/(tabs)")}>
-                <ButtonText>Go Home</ButtonText>
-            </Button>
-        </VStack>
+            </View>
+            <Button onPress={() => router.replace("/(tabs)")}>Go Home</Button>
+        </View>
     );
 }

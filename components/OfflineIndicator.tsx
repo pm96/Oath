@@ -1,34 +1,19 @@
 import { HStack } from "@/components/ui/hstack";
-import { Text } from "@/components/ui/text";
-import { isOnline } from "@/utils/errorHandling";
-import React, { useEffect, useState } from "react";
+import { Text } from "@/components/ui/Text";
+import { useSync } from "@/hooks/useSync";
+import React from "react";
 import { Platform } from "react-native";
 
 /**
  * OfflineIndicator Component
  *
- * Displays a banner when the device is offline
- * Requirement: Implement graceful degradation for offline scenarios
+ * Displays a banner when the device is offline with sync status
+ * Requirements: 10.1, 10.4 - Implement graceful degradation for offline scenarios
  */
 export function OfflineIndicator() {
-    const [online, setOnline] = useState(true);
+    const { syncStatus } = useSync();
 
-    useEffect(() => {
-        // Check connectivity on mount
-        checkConnectivity();
-
-        // Check connectivity periodically
-        const interval = setInterval(checkConnectivity, 10000); // Every 10 seconds
-
-        return () => clearInterval(interval);
-    }, []);
-
-    const checkConnectivity = async () => {
-        const connected = await isOnline();
-        setOnline(connected);
-    };
-
-    if (online) {
+    if (syncStatus.isOnline) {
         return null;
     }
 
@@ -40,6 +25,12 @@ export function OfflineIndicator() {
             <Text className="text-white font-semibold">
                 {Platform.OS === "web" ? "🔌" : "⚠️"} No Internet Connection
             </Text>
+
+            {syncStatus.pendingOperations > 0 && (
+                <Text className="text-white text-sm">
+                    • {syncStatus.pendingOperations} changes pending
+                </Text>
+            )}
         </HStack>
     );
 }

@@ -1,113 +1,415 @@
-import { GoalForm, GoalList } from "@/components/goals";
-import { Button, ButtonText } from "@/components/ui/button";
-import { Heading } from "@/components/ui/heading";
-import { HStack } from "@/components/ui/hstack";
-import { VStack } from "@/components/ui/vstack";
+import { HabitCreationModal, HabitInput } from "@/components/habits";
+import {
+    AnimatedView,
+    Body,
+    Button,
+    Caption,
+    Card,
+    Container,
+    HStack,
+    Heading,
+    LoadingSkeleton,
+    Progress,
+    VStack,
+} from "@/components/ui";
+import {
+    CelebrationView,
+    CelebrationViewRef,
+} from "@/components/ui/CelebrationView";
 import { useAuth } from "@/hooks/useAuth";
-import { useGoals } from "@/hooks/useGoals";
+import { GoalWithStreak, useGoals } from "@/hooks/useGoals";
+import { useThemeStyles } from "@/hooks/useTheme";
+import { HapticFeedback } from "@/utils/celebrations";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
-import React, { useState } from "react";
-import { Modal } from "react-native";
+import { Check, Plus } from "lucide-react-native";
+import React, { useRef, useState } from "react";
+import { Alert, RefreshControl, ScrollView, Text, View } from "react-native";
+import { SafeAreaView } from "@/components/ui/safe-area-view";
+import { GoalInput } from "@/services/firebase/goalService";
+import { router } from "expo-router";
 
 /**
- * Home screen with goal management
- * Requirements: 2.1, 2.2, 2.3, 2.5, 8.1, 8.2, 8.5
+ * Modern redesigned Home screen
+ * Requirements: 7.1, 7.3 - Clean habit tracking interface with progress indicators
  */
 export default function Home() {
-    const { signOut } = useAuth();
-    const { goals, loading, createGoal, completeGoal, refresh } = useGoals();
+    const { user } = useAuth();
+    const {
+        goals,
+        loading,
+        createGoal,
+        completeGoal,
+        undoGoalCompletion,
+        refresh,
+    } = useGoals();
     const [showCreateForm, setShowCreateForm] = useState(false);
-    const [signingOut, setSigningOut] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const { colors, spacing } = useThemeStyles();
+    const celebrationRef = useRef<CelebrationViewRef>(null);
 
-    const handleSignOut = async () => {
-        setSigningOut(true);
-        try {
-            await signOut();
-        } catch (error: any) {
-            showErrorToast(error.message || "Sign out failed", "Sign Out Failed");
-        } finally {
-            setSigningOut(false);
-        }
+    // Get current date for greeting
+    const getCurrentGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return "Good morning";
+        if (hour < 17) return "Good afternoon";
+        return "Good evening";
     };
 
-    const handleCreateGoal = async (goalInput: any) => {
+    const getCurrentDate = () => {
+        return new Date()
+            .toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+            })
+            .toUpperCase();
+    };
+
+    const handleCreateGoal = async (habitInput: HabitInput) => {
         try {
+            // Convert HabitInput to the format expected by createGoal
+            const goalInput = {
+                description: habitInput.description,
+                frequency: habitInput.frequency,
+                targetDays: habitInput.targetDays,
+                difficulty: habitInput.difficulty,
+                type: habitInput.type,
+                targetTime:
+                    habitInput.type === "time" ? habitInput.targetTime : undefined,
+                isShared: habitInput.isShared,
+            } satisfies GoalInput;
+
             await createGoal(goalInput);
             setShowCreateForm(false);
-            showSuccessToast("Goal created successfully!");
+
+            // Success haptic feedback
+            HapticFeedback.success();
+            showSuccessToast("Habit created successfully!");
         } catch (error: any) {
-            showErrorToast(error.message || "Failed to create goal", "Error");
+            HapticFeedback.error();
+            showErrorToast(error.message || "Failed to create habit", "Error");
         }
     };
 
     const handleCompleteGoal = async (goalId: string) => {
         try {
             await completeGoal(goalId);
-            showSuccessToast("Goal completed!");
+
+            // Trigger celebration animation
+            // Requirements: 3.2, 7.4 - Confetti animation for goal completion
+            setTimeout(() => {
+                celebrationRef.current?.celebrate();
+            }, 300);
+
+            // Success haptic feedback
+            HapticFeedback.success();
+
+            showSuccessToast("Habit completed! 🎉");
         } catch (error: any) {
-            showErrorToast(error.message || "Failed to complete goal", "Error");
+            HapticFeedback.error();
+            showErrorToast(error.message || "Failed to complete habit", "Error");
         }
     };
 
-    /**
-     * Handle pull-to-refresh
-     * Requirement 8.5: Add pull-to-refresh functionality
-     */
-    const handleRefresh = () => {
-        if (refresh) {
-            refresh();
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        try {
+            if (refresh) {
+                await refresh();
+            }
+        } finally {
+            setRefreshing(false);
         }
     };
+
+    // Calculate daily progress
+    const today = new Date().toDateString();
+    const completedGoals = goals.filter((goal) => {
+        // Check if goal was completed today
+        return (
+            goal.latestCompletionDate &&
+            new Date(goal.latestCompletionDate).toDateString() === today
+        );
+    }).length;
+    const totalGoals = goals.length;
+    const progressPercentage =
+        totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0;
+
+    const handleOpenGoalDetails = (goal: GoalWithStreak) => {
+        router.push({
+            pathname: "/habit-detail",
+            params: { habitId: goal.id, habitName: goal.description },
+        });
+    };
+
+    const handleUndoGoal = async (goalId: string) => {
+        try {
+            await undoGoalCompletion(goalId);
+            HapticFeedback.selection();
+            showSuccessToast("Marked as not done.");
+        } catch (error: any) {
+            HapticFeedback.error();
+            showErrorToast(error.message || "Failed to undo completion", "Error");
+        }
+    };
+
+    const confirmUndoGoal = (goal: GoalWithStreak) => {
+        Alert.alert(
+            "Mark as not done?",
+            "This removes today's completion and updates your streak.",
+            [
+                { text: "Keep it", style: "cancel" },
+                { text: "Undo", style: "destructive", onPress: () => handleUndoGoal(goal.id) },
+            ],
+        );
+    };
+
+    const renderGoalCard = (goal: GoalWithStreak, index: number) => {
+        const today = new Date().toDateString();
+        const isCompletedToday =
+            goal.latestCompletionDate &&
+            new Date(goal.latestCompletionDate).toDateString() === today;
+        const currentStreakCount = goal.currentStreakCount ?? 0;
+        const bestStreakCount = goal.bestStreakCount ?? 0;
+
+        return (
+            <AnimatedView
+                key={goal.id}
+                animation="slideInFromBottom"
+                delay={index * 100}
+            >
+                <Card
+                    variant="default"
+                    padding="md"
+                    onPress={() => handleOpenGoalDetails(goal)}
+                >
+                    <HStack
+                        justify="between"
+                        align="center"
+                        style={{ marginBottom: spacing.md }}
+                    >
+                        <VStack style={{ flex: 1 }} spacing="xs">
+                            <Heading size="md">{goal.description}</Heading>
+                            <HStack spacing="sm" align="center">
+                                {goal.type === "time" && (
+                                    <Caption color="muted">
+                                        ⏰ {goal.targetTime || "07:00"}
+                                    </Caption>
+                                )}
+                                {goal.type === "flexible" && (
+                                    <Caption color="muted">⚡ Flexible</Caption>
+                                )}
+                                {goal.isShared && (
+                                    <Caption color="success">👥 Shared</Caption>
+                                )}
+                            </HStack>
+                            {currentStreakCount > 0 && (
+                                <Caption color="warning">
+                                    {"🔥 " +
+                                        currentStreakCount +
+                                        " day streak" +
+                                        (bestStreakCount > currentStreakCount
+                                            ? " (Best: " + bestStreakCount + ")"
+                                            : "")}
+                                </Caption>
+                            )}
+                        </VStack>
+
+                        <VStack align="center" spacing="xs">
+                            {isCompletedToday ? (
+                                <Button
+                                    variant="success"
+                                    size="sm"
+                                    onPress={() => confirmUndoGoal(goal)}
+                                    accessibilityLabel={`Undo completion for ${goal.description}`}
+                                    accessibilityHint="Double tap to mark this habit as not done"
+                                >
+                                    <Check
+                                        size={16}
+                                        color={colors.primaryForeground}
+                                        style={{ marginRight: spacing.xs }}
+                                    />
+                                    Completed
+                                </Button>
+                            ) : (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onPress={() => handleCompleteGoal(goal.id)}
+                                    accessibilityLabel={`Mark ${goal.description} as done`}
+                                >
+                                    Mark Done
+                                </Button>
+                            )}
+                        </VStack>
+                    </HStack>
+                </Card>
+            </AnimatedView>
+        );
+    };
+
+    const renderLoadingSkeleton = () => (
+        <View style={{ gap: 12 }}>
+            {[1, 2, 3].map((i) => (
+                <Card key={i} padding="md">
+                    <View
+                        style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                        }}
+                    >
+                        <View style={{ flex: 1 }}>
+                            <LoadingSkeleton height={20} width="70%" />
+                            <LoadingSkeleton
+                                height={14}
+                                width="40%"
+                                style={{ marginTop: spacing.xs }}
+                            />
+                        </View>
+                        <LoadingSkeleton height={32} width={60} />
+                    </View>
+                </Card>
+            ))}
+        </View>
+    );
 
     return (
-        <VStack className="flex-1">
-            {/* Header - Requirement 8.3: Touch targets at least 44x44 pixels */}
-            <VStack className="p-4 pb-2" space="sm">
-                <HStack className="justify-between items-center">
-                    <Heading size="xl">My Goals</Heading>
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onPress={handleSignOut}
-                        disabled={signingOut}
-                        style={{ minWidth: 44, minHeight: 44 }}
-                    >
-                        <ButtonText>{signingOut ? "..." : "Sign Out"}</ButtonText>
-                    </Button>
-                </HStack>
-                <Button
-                    onPress={() => setShowCreateForm(true)}
-                    style={{ minHeight: 44 }}
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+            <Container padding="lg">
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={colors.primary}
+                        />
+                    }
                 >
-                    <ButtonText>+ Create New Goal</ButtonText>
-                </Button>
-            </VStack>
+                    {/* Header with greeting */}
+                    <AnimatedView animation="fadeIn">
+                        <View style={{ gap: 4, marginBottom: spacing.xl }}>
+                            <Caption color="muted">{getCurrentDate()}</Caption>
+                            <View
+                                style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                }}
+                            >
+                                <Heading size="xxl">
+                                    {getCurrentGreeting()},{"\n"}
+                                    <Heading size="xxl" color="primary">
+                                        {user?.displayName?.split(" ")[0] || "Demo"}
+                                    </Heading>
+                                </Heading>
 
-            {/* Goals List with pull-to-refresh - Requirements 8.1, 8.5 */}
-            <GoalList
-                goals={goals}
-                onComplete={handleCompleteGoal}
-                loading={loading}
-                onRefresh={handleRefresh}
+                                {/* Floating Action Button */}
+                                <Button
+                                    variant="primary"
+                                    size="lg"
+                                    onPress={() => setShowCreateForm(true)}
+                                    style={{
+                                        width: 64,
+                                        height: 64,
+                                        borderRadius: 32,
+                                        backgroundColor: colors.primary,
+                                        shadowColor: colors.primary,
+                                        shadowOffset: { width: 0, height: 4 },
+                                        shadowOpacity: 0.3,
+                                        shadowRadius: 8,
+                                        elevation: 8,
+                                    }}
+                                    accessibilityLabel="Add a new habit"
+                                    accessibilityHint="Opens the create habit form"
+                                >
+                                    <Plus size={34} color="white" />
+                                </Button>
+                            </View>
+                        </View>
+                    </AnimatedView>
+
+                    {/* Daily Progress Summary */}
+                    {totalGoals > 0 && (
+                        <AnimatedView animation="slideInFromBottom" delay={200}>
+                            <Card
+                                variant="elevated"
+                                padding="lg"
+                                style={{
+                                    marginBottom: spacing.xl,
+                                    backgroundColor: colors.card,
+                                }}
+                            >
+                                <View style={{ gap: 12 }}>
+                                    <View
+                                        style={{
+                                            flexDirection: "row",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                        }}
+                                    >
+                                        <Body weight="semibold">Daily Progress</Body>
+                                        <Body weight="bold" color="primary">
+                                            {Math.round(progressPercentage)}%
+                                        </Body>
+                                    </View>
+                                    <Progress
+                                        value={progressPercentage}
+                                        max={100}
+                                        size="md"
+                                        showLabel={false}
+                                    />
+                                    <Caption color="muted">
+                                        {completedGoals} of {totalGoals} habits completed today
+                                    </Caption>
+                                </View>
+                            </Card>
+                        </AnimatedView>
+                    )}
+
+                    {/* Goals List */}
+                    {loading ? (
+                        renderLoadingSkeleton()
+                    ) : goals.length > 0 ? (
+                        <View>
+                            {goals.map((goal, index) => renderGoalCard(goal, index))}
+                        </View>
+                    ) : (
+                        <AnimatedView animation="fadeIn" delay={300}>
+                            <Card variant="outlined" padding="lg">
+                                <View
+                                    style={{
+                                        alignItems: "center",
+                                        gap: 12, // md spacing
+                                    }}
+                                >
+                                    <Body color="muted" align="center">
+                                        No habits yet. Create your first habit to get started!
+                                    </Body>
+                                    <Button
+                                        variant="primary"
+                                        onPress={() => setShowCreateForm(true)}
+                                    >
+                                        Create Your First Habit
+                                    </Button>
+                                </View>
+                            </Card>
+                        </AnimatedView>
+                    )}
+                </ScrollView>
+            </Container>
+
+            {/* Create Habit Modal */}
+            <HabitCreationModal
+                visible={showCreateForm}
+                onClose={() => setShowCreateForm(false)}
+                onSubmit={handleCreateGoal}
             />
 
-            {/* Create Goal Modal */}
-            <Modal
-                visible={showCreateForm}
-                animationType="slide"
-                presentationStyle="pageSheet"
-                onRequestClose={() => setShowCreateForm(false)}
-            >
-                <VStack className="flex-1 bg-background-0">
-                    <VStack className="p-4 border-b border-background-200">
-                        <Heading size="lg">Create New Goal</Heading>
-                    </VStack>
-                    <GoalForm
-                        onSubmit={handleCreateGoal}
-                        onCancel={() => setShowCreateForm(false)}
-                    />
-                </VStack>
-            </Modal>
-        </VStack>
+            {/* Celebration View for confetti animations */}
+            {/* Requirements: 3.2, 7.4 - Confetti celebration for goal completion */}
+            <CelebrationView ref={celebrationRef} type="goalCompletion" />
+        </SafeAreaView>
     );
 }

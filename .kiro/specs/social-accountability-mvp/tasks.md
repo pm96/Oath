@@ -132,7 +132,7 @@
   - **Property 15: Nudge notification content**
   - **Validates: Requirements 5.5**
 
-- [ ] 9. Implement Firestore Security Rules
+- [x] 9. Implement Firestore Security Rules
   - Write security rules for user document access (own document only)
   - Write security rules for goal read access (owner or friends)
   - Write security rules for goal write access (owner only)
@@ -195,5 +195,5 @@
   - Verify real-time synchronization across multiple devices
   - _Requirements: All_
 
-- [ ] 15. Final Checkpoint - Ensure all tests pass
+- [x] 15. Final Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.

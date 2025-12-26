@@ -1,0 +1,26 @@
+2feba1b7b67d6be6caddb81b8349756d
+// Jest setup file
+// Mock AsyncStorage
+jest.mock("@react-native-async-storage/async-storage", () => ({
+    __esModule: true,
+    default: {
+        getItem: jest.fn(),
+        setItem: jest.fn(),
+        removeItem: jest.fn(),
+        clear: jest.fn(),
+    },
+}));
+
+// Mock Firebase modules that require native modules
+jest.mock("firebase/auth", () => ({
+    getReactNativePersistence: jest.fn(),
+    initializeAuth: jest.fn(() => ({})),
+}));
+
+// Mock Expo modules
+jest.mock("expo", () => ({
+    __ExpoImportMetaRegistry: {},
+}));
+
+jest.mock("expo/src/winter/runtime.native", () => ({}));
+jest.mock("expo/src/winter/installGlobal", () => ({}));

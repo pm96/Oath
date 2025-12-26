@@ -1,11 +1,13 @@
-import { Heading } from "@/components/ui/heading";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
+import { VStack } from "@/components/ui/Stack";
+import { Heading, Text } from "@/components/ui/Text";
 import { useAuth } from "@/hooks/useAuth";
-import { useFriendsGoals } from "@/hooks/useFriendsGoals";
+import {
+    GoalWithOwnerAndStatus,
+    useFriendsGoals,
+} from "@/hooks/useFriendsGoals";
 import { sendNudge } from "@/services/firebase/cloudFunctions";
-import { GoalWithOwner, User } from "@/services/firebase/collections";
+import { User } from "@/services/firebase/collections";
 import { subscribeToUserData } from "@/services/firebase/socialService";
 import React from "react";
 import { Alert, FlatList, RefreshControl, View } from "react-native";
@@ -18,10 +20,10 @@ import { ShameScoreDisplay } from "./ShameScoreDisplay";
  */
 function FriendGoalSkeleton() {
     return (
-        <VStack className="p-4 mb-3 bg-background-50 rounded-lg" space="sm">
-            <Skeleton className="h-5 w-3/4" />
+        <VStack spacing="sm">
+            <Skeleton />
             <SkeletonText _lines={3} />
-            <Skeleton className="h-4 w-1/2" />
+            <Skeleton />
         </VStack>
     );
 }
@@ -39,8 +41,7 @@ function FriendGoalSkeleton() {
  */
 export function FriendsDashboard() {
     const { user } = useAuth();
-    const { friendsGoals, loading, error, friendIds, refresh } =
-        useFriendsGoals();
+    const { sortedGoals, loading, error, friendIds, refresh } = useFriendsGoals();
     const [currentUserData, setCurrentUserData] = React.useState<User | null>(
         null,
     );
@@ -109,32 +110,36 @@ export function FriendsDashboard() {
      * Requirement 8.5: Optimize list rendering performance with FlatList
      */
     const renderGoalItem = React.useCallback(
-        ({ item }: { item: GoalWithOwner }) => (
-            <FriendGoalItem goal={item} onNudge={handleNudge} />
+        ({ item }: { item: GoalWithOwnerAndStatus }) => (
+            <FriendGoalItem
+                goal={item}
+                currentUserId={user?.uid || ""}
+                onNudge={handleNudge}
+            />
         ),
-        [handleNudge],
+        [handleNudge, user?.uid],
     );
 
     /**
      * Render list header with user's shame score
      */
     const renderListHeader = () => (
-        <VStack className="mb-4" space="lg">
+        <VStack spacing="lg">
             {/* User's own shame score - Requirement 6.1 */}
             {currentUserData && (
-                <VStack space="sm">
+                <VStack spacing="sm">
                     <Heading size="md">Your Shame Score</Heading>
                     <ShameScoreDisplay score={currentUserData.shameScore} size="lg" />
                 </VStack>
             )}
 
             {/* Friends' goals section header */}
-            {friendsGoals.length > 0 && (
-                <VStack space="sm">
+            {sortedGoals.length > 0 && (
+                <VStack spacing="sm">
                     <Heading size="md">Friends&apos; Goals</Heading>
-                    <Text className="text-typography-500">
-                        {friendsGoals.length} goal{friendsGoals.length !== 1 ? "s" : ""}{" "}
-                        from {friendIds.length} friend{friendIds.length !== 1 ? "s" : ""}
+                    <Text>
+                        {sortedGoals.length} goal{sortedGoals.length !== 1 ? "s" : ""} from{" "}
+                        {friendIds.length} friend{friendIds.length !== 1 ? "s" : ""}
                     </Text>
                 </VStack>
             )}
@@ -146,11 +151,11 @@ export function FriendsDashboard() {
      */
     const renderEmptyState = () => {
         // Show skeleton loaders during initial load
-        if (loading && friendsGoals.length === 0) {
+        if (loading && sortedGoals.length === 0) {
             return (
-                <VStack className="p-4" space="md">
+                <VStack spacing="md">
                     {currentUserData && (
-                        <VStack space="sm">
+                        <VStack spacing="sm">
                             <Heading size="md">Your Shame Score</Heading>
                             <ShameScoreDisplay score={currentUserData.shameScore} size="lg" />
                         </VStack>
@@ -165,18 +170,16 @@ export function FriendsDashboard() {
         // No friends state
         if (friendIds.length === 0) {
             return (
-                <VStack className="p-4" space="lg">
+                <VStack spacing="lg">
                     {currentUserData && (
-                        <VStack space="sm">
+                        <VStack spacing="sm">
                             <Heading size="md">Your Shame Score</Heading>
                             <ShameScoreDisplay score={currentUserData.shameScore} size="lg" />
                         </VStack>
                     )}
-                    <VStack space="sm" className="items-center py-8">
-                        <Text className="text-typography-600 text-center text-lg">
-                            No friends added yet
-                        </Text>
-                        <Text className="text-typography-500 text-center">
+                    <VStack spacing="sm">
+                        <Text>No friends added yet</Text>
+                        <Text>
                             Add friends to see their goals and hold each other accountable!
                         </Text>
                     </VStack>
@@ -186,20 +189,16 @@ export function FriendsDashboard() {
 
         // No goals from friends state
         return (
-            <VStack className="p-4" space="lg">
+            <VStack spacing="lg">
                 {currentUserData && (
-                    <VStack space="sm">
+                    <VStack spacing="sm">
                         <Heading size="md">Your Shame Score</Heading>
                         <ShameScoreDisplay score={currentUserData.shameScore} size="lg" />
                     </VStack>
                 )}
-                <VStack space="sm" className="items-center py-8">
-                    <Text className="text-typography-600 text-center text-lg">
-                        Your friends haven&apos;t created any goals yet
-                    </Text>
-                    <Text className="text-typography-500 text-center">
-                        Encourage them to set some goals!
-                    </Text>
+                <VStack spacing="sm">
+                    <Text>Your friends haven&apos;t created any goals yet</Text>
+                    <Text>Encourage them to set some goals!</Text>
                 </VStack>
             </VStack>
         );
@@ -208,8 +207,8 @@ export function FriendsDashboard() {
     // Error state
     if (error) {
         return (
-            <View className="flex-1 justify-center items-center bg-background-0 p-4">
-                <Text className="text-error-600 text-center">{error.message}</Text>
+            <View>
+                <Text>{error.message}</Text>
             </View>
         );
     }
@@ -218,7 +217,7 @@ export function FriendsDashboard() {
     // Requirements 8.1, 8.5: Optimized list rendering with pull-to-refresh
     return (
         <FlatList
-            data={friendsGoals}
+            data={sortedGoals}
             renderItem={renderGoalItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ padding: 16, flexGrow: 1 }}

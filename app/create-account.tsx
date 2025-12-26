@@ -1,8 +1,6 @@
-import { Button, ButtonText } from "@/components/ui/button";
-import { Heading } from "@/components/ui/heading";
-import { Input, InputField } from "@/components/ui/input";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Heading, Text } from "@/components/ui/Text";
 import { useAuth } from "@/hooks/useAuth";
 import {
     validateDisplayName,
@@ -12,7 +10,7 @@ import {
 import { showErrorToast } from "@/utils/toast";
 import { Redirect, router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 
 /**
  * CreateAccountScreen
@@ -96,15 +94,22 @@ export default function CreateAccount() {
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={{ flex: 1 }}
         >
-            <VStack className="flex-1 p-6 justify-center" space="xl">
-                <VStack space="md">
-                    <Heading size="2xl">Create Account</Heading>
-                    <Text>Sign up to get started.</Text>
-                </VStack>
+            <ScrollView
+                contentContainerStyle={{
+                    flexGrow: 1,
+                    padding: 24,
+                    justifyContent: "center",
+                }}
+                keyboardShouldPersistTaps="handled"
+            >
+                <View style={{ gap: 32 }}>
+                    <View style={{ gap: 16 }}>
+                        <Heading size="xl">Create Account</Heading>
+                        <Text>Sign up to get started.</Text>
+                    </View>
 
-                <VStack space="lg">
-                    <Input>
-                        <InputField
+                    <View style={{ gap: 24 }}>
+                        <Input
                             placeholder="Display Name"
                             value={displayName}
                             onChangeText={setDisplayName}
@@ -112,10 +117,8 @@ export default function CreateAccount() {
                             autoComplete="name"
                             editable={!loading}
                         />
-                    </Input>
 
-                    <Input>
-                        <InputField
+                        <Input
                             placeholder="Email"
                             value={email}
                             onChangeText={setEmail}
@@ -124,10 +127,8 @@ export default function CreateAccount() {
                             autoComplete="email"
                             editable={!loading}
                         />
-                    </Input>
 
-                    <Input>
-                        <InputField
+                        <Input
                             placeholder="Password"
                             value={password}
                             onChangeText={setPassword}
@@ -135,10 +136,8 @@ export default function CreateAccount() {
                             autoComplete="password-new"
                             editable={!loading}
                         />
-                    </Input>
 
-                    <Input>
-                        <InputField
+                        <Input
                             placeholder="Confirm Password"
                             value={confirmPassword}
                             onChangeText={setConfirmPassword}
@@ -146,23 +145,21 @@ export default function CreateAccount() {
                             autoComplete="password-new"
                             editable={!loading}
                         />
-                    </Input>
 
-                    <Button onPress={handleCreateAccount} disabled={loading}>
-                        <ButtonText>
+                        <Button onPress={handleCreateAccount} disabled={loading}>
                             {loading ? "Creating account..." : "Create Account"}
-                        </ButtonText>
-                    </Button>
+                        </Button>
 
-                    <Button
-                        variant="link"
-                        onPress={() => router.push("/sign-in")}
-                        disabled={loading}
-                    >
-                        <ButtonText>Already have an account? Sign in</ButtonText>
-                    </Button>
-                </VStack>
-            </VStack>
+                        <Button
+                            variant="ghost"
+                            onPress={() => router.push("/sign-in")}
+                            disabled={loading}
+                        >
+                            Already have an account? Sign in
+                        </Button>
+                    </View>
+                </View>
+            </ScrollView>
         </KeyboardAvoidingView>
     );
 }

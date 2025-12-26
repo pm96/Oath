@@ -1,5 +1,5 @@
 import { HStack } from "@/components/ui/hstack";
-import { Text } from "@/components/ui/text";
+import { Text } from "@/components/ui/Text";
 import { VStack } from "@/components/ui/vstack";
 import React from "react";
 

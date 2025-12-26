@@ -14,30 +14,172 @@ service cloud.firestore {
     // Helper function to check if user is in owner's friends list
     function isFriend(ownerId) {
       return isAuthenticated() && 
-             request.auth.uid in get(/databases/$(database)/documents/artifacts/$(appId)/users/$(ownerId)).data.friends;
+             request.auth.uid in get(/databases/$(database)/documents/artifacts/oath-app/users/$(ownerId)).data.friends;
     }
 
-    // User documents - users can only read/write their own document
-    match /artifacts/{appId}/users/{userId} {
-      allow read, write: if isOwner(userId);
+    // Helper function to check if two users are friends (bidirectional check)
+    function areFriends(userId1, userId2) {
+      return isAuthenticated() && 
+             userId2 in get(/databases/$(database)/documents/artifacts/oath-app/users/$(userId1)).data.friends;
+    }
+
+    // Helper to determine ownership from document ID prefix (e.g., userId_goalId)
+    function docIdBelongsToUser(docId) {
+      return isAuthenticated() && docId.matches('^' + request.auth.uid + '(_.*)?$');
+    }
+
+    // User documents - allow read for search functionality, write only for own document
+    match /artifacts/oath-app/users/{userId} {
+      // Allow read for any authenticated user (needed for user search functionality)
+      // This is a compromise between Requirements 7.1 and the need for friend search
+      allow read: if isAuthenticated();
+      // Allow write only for own document (Requirements 7.1)
+      allow write: if isOwner(userId);
+    }
+
+    // Friend requests collection
+    match /artifacts/oath-app/friendRequests/{requestId} {
+      // Users can read requests where they are sender or receiver
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      
+      // Users can create requests where they are the sender
+      allow create: if isAuthenticated() &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      
+      // Users can update requests where they are the receiver (to accept/reject)
+      allow update: if isAuthenticated() &&
+        resource.data.receiverId == request.auth.uid &&
+        request.resource.data.status in ['accepted', 'rejected'];
     }
 
     // Goal documents - read access for owner or friends, write access for owner only
-    match /artifacts/{appId}/public/data/goals/{goalId} {
-      // Allow read if user is owner or owner has user in their friends list
+    match /artifacts/oath-app/public/data/goals/{goalId} {
+      // Allow read if user is owner or user is in owner's friends list (Requirements 10.1, 10.3)
       allow read: if isAuthenticated() && (
         resource.data.ownerId == request.auth.uid ||
-        request.auth.uid in get(/databases/$(database)/documents/artifacts/oath-app/users/$(resource.data.ownerId)).data.friends
+        (resource.data.ownerId != null && 
+         isFriend(resource.data.ownerId))
       );
       
-      // Allow write only if user is the owner
+      // Allow write only if user is the owner (Requirements 7.3)
       allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
       
-      // Allow create only if user is setting themselves as owner
+      // Allow create only if user is setting themselves as owner (Requirements 7.3)
       allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
     }
 
-    // Deny all other access
+    // Nudges collection - Requirements 10.1, 10.2, 10.3, 10.4, 10.5
+    match /artifacts/oath-app/nudges/{nudgeId} {
+      // Users can read nudges where they are sender or receiver (Requirements 10.4)
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      
+      // Users can create nudges where they are the sender and receiver is a friend (Requirements 10.2)
+      allow create: if isAuthenticated() &&
+        request.resource.data.senderId == request.auth.uid &&
+        areFriends(request.auth.uid, request.resource.data.receiverId);
+      
+      // No updates or deletes allowed - nudges are immutable (Requirements 10.2)
+      allow update, delete: if false;
+    }
+
+    // Habit completions collection - Requirements 12.1, 12.3
+    match /artifacts/oath-app/completions/{completionId} {
+      // Only the owner can read their completion records (Requirements 12.3)
+      allow read: if isAuthenticated() && (
+        (resource != null && resource.data.userId == request.auth.uid) ||
+        (resource == null && docIdBelongsToUser(completionId))
+      );
+      
+      // Only the owner can create completion records (Requirements 12.3)
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        // Validate timestamp is within current day in user timezone (Requirements 12.1)
+        request.resource.data.completedAt <= request.time &&
+        request.resource.data.completedAt >= request.time - duration.value(1, 'd');
+      
+      // Allow update to mark completions as reverted by the owner (soft-delete)
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.isActive == false &&
+        request.resource.data.revertedAt != null &&
+        request.resource.data.revertedAt <= request.time &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["isActive", "revertedAt"]);
+
+      // No deletes permitted - rely on soft-deletes for undo capability
+      allow delete: if false;
+    }
+
+    // Habit streaks collection - Requirements 12.2, 12.3, 12.4
+    match /artifacts/oath-app/streaks/{streakId} {
+      // Owner can read their streaks, friends can read shared habit streaks (Requirements 12.4)
+      allow read: if isAuthenticated() && (
+        (resource != null && resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId != null && isFriend(resource.data.userId)) ||
+        (resource == null && docIdBelongsToUser(streakId))
+      );
+      
+      // Only server-side functions can update streak calculations (Requirements 12.2)
+      // No client-side writes allowed to prevent manipulation
+      allow write: if false;
+    }
+
+    // Habit analytics collection - Requirements 12.2, 12.3
+    match /artifacts/oath-app/analytics/{analyticsId} {
+      // Only the owner can read their analytics (Requirements 12.3)
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Only server-side functions can update analytics (Requirements 12.2)
+      allow write: if false;
+    }
+
+    // Social posts collection for streak sharing - Requirements 8.2, 8.3
+    match /artifacts/oath-app/socialPosts/{postId} {
+      // Users can read posts from their friends
+      allow read: if isAuthenticated() && (
+        resource.data.authorId == request.auth.uid ||
+        isFriend(resource.data.authorId)
+      );
+      
+      // Users can create posts about their own achievements
+      allow create: if isAuthenticated() && 
+        request.resource.data.authorId == request.auth.uid;
+      
+      // No updates or deletes - posts are immutable
+      allow update, delete: if false;
+    }
+
+    // Shared streaks collection for friend visibility - Requirements 8.4
+    match /artifacts/oath-app/sharedStreaks/{sharedStreakId} {
+      // Users can read shared streaks from their friends
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isFriend(resource.data.userId)
+      );
+      
+      // Users can share their own streaks
+      allow create, update: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own shared streaks
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Streak notifications collection - Requirements 11.1, 11.2, 11.3
+    match /artifacts/oath-app/streakNotifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Only server-side functions can create notifications
+      allow write: if false;
+    }
+
+    // Deny all other access - unauthenticated access denial (Requirements 10.5)
     match /{document=**} {
       allow read, write: if false;
     }

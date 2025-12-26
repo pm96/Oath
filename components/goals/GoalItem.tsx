@@ -1,17 +1,25 @@
-import { Button, ButtonText } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { HStack } from "@/components/ui/hstack";
-import { Text } from "@/components/ui/text";
-import { VStack } from "@/components/ui/vstack";
-import { Goal } from "@/services/firebase/collections";
+import { VStack } from "@/components/ui/Stack";
+import { Text } from "@/components/ui/Text";
+import { GoalWithStreak } from "@/hooks/useGoals";
+import { HapticFeedback, createSuccessAnimation } from "@/utils/celebrations";
+import { router } from "expo-router";
 import React, { useEffect, useRef } from "react";
-import { Animated, View } from "react-native";
+import {
+    Animated,
+    GestureResponderEvent,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 interface GoalItemProps {
-    goal: Goal;
+    goal: GoalWithStreak;
     onComplete: (goalId: string) => Promise<void>;
     showOwner?: boolean;
     ownerName?: string;
+    onCelebrate?: () => void; // Callback to trigger celebration
 }
 
 /**
@@ -62,10 +70,12 @@ export function GoalItem({
     onComplete,
     showOwner,
     ownerName,
+    onCelebrate,
 }: GoalItemProps) {
     const [loading, setLoading] = React.useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.95)).current;
+    const successAnim = useRef(new Animated.Value(1)).current;
 
     /**
      * Fade-in animation on mount
@@ -88,15 +98,43 @@ export function GoalItem({
     }, [fadeAnim, scaleAnim]);
 
     /**
-     * Handle goal completion
-     * Requirement 2.5: Mark goal as complete
+     * Handle navigation to habit detail screen
+     */
+    const handleNavigateToDetail = () => {
+        router.push({
+            pathname: "/habit-detail",
+            params: {
+                habitId: goal.id,
+                habitName: goal.description,
+            },
+        });
+    };
+
+    /**
+     * Handle goal completion with celebration
+     * Requirements: 3.2, 7.4 - Success animations and haptic feedback
      */
     const handleComplete = async () => {
         setLoading(true);
         try {
+            // Trigger success animation
+            createSuccessAnimation(successAnim).start();
+
+            // Haptic feedback for success
+            HapticFeedback.success();
+
             await onComplete(goal.id);
+
+            // Trigger celebration callback if provided
+            if (onCelebrate) {
+                setTimeout(() => {
+                    onCelebrate();
+                }, 200);
+            }
         } catch (error) {
             console.error("Failed to complete goal:", error);
+            // Error haptic feedback
+            HapticFeedback.error();
         } finally {
             setLoading(false);
         }
@@ -106,73 +144,97 @@ export function GoalItem({
         <Animated.View
             style={{
                 opacity: fadeAnim,
-                transform: [{ scale: scaleAnim }],
+                transform: [
+                    { scale: scaleAnim },
+                    { scale: successAnim }, // Add success animation scale
+                ],
             }}
         >
-            <Card className="p-4 mb-3">
-                <HStack space="md" className="items-start">
-                    {/* Status indicator - Requirement 8.2 */}
-                    <View
-                        className={`w-4 h-4 rounded-full mt-1 ${getStatusColor(goal.currentStatus)}`}
-                        style={{ minWidth: 16, minHeight: 16 }}
-                    />
+            <TouchableOpacity onPress={handleNavigateToDetail} activeOpacity={0.7}>
+                <Card>
+                    <HStack space="md">
+                        {/* Status indicator - Requirement 8.2 */}
+                        <View
+                            className={`w-4 h-4 rounded-full mt-1 ${getStatusColor(goal.currentStatus)}`}
+                            style={{ minWidth: 16, minHeight: 16 }}
+                        />
 
-                    <VStack space="xs" className="flex-1">
-                        {/* Goal description */}
-                        <Text className="font-semibold text-base leading-6">
-                            {goal.description}
-                        </Text>
+                        <VStack spacing="xs">
+                            {/* Goal description */}
+                            <Text>{goal.description}</Text>
 
-                        {/* Owner name if showing friends' goals */}
-                        {showOwner && ownerName && (
-                            <Text className="text-sm text-typography-500 leading-5">
-                                {ownerName}
+                            {/* Owner name if showing friends' goals */}
+                            {showOwner && ownerName && <Text>{ownerName}</Text>}
+
+                            {/* Frequency and target days */}
+                            <Text>
+                                {goal.frequency === "daily"
+                                    ? "Daily"
+                                    : goal.frequency === "weekly"
+                                        ? `Weekly (${goal.targetDays.join(", ")})`
+                                        : `3x a week (${goal.targetDays.join(", ")})`}
                             </Text>
-                        )}
 
-                        {/* Frequency and target days */}
-                        <Text className="text-sm text-typography-600 leading-5">
-                            {goal.frequency === "daily"
-                                ? "Daily"
-                                : goal.frequency === "weekly"
-                                    ? `Weekly (${goal.targetDays.join(", ")})`
-                                    : `3x a week (${goal.targetDays.join(", ")})`}
-                        </Text>
+                            {/* Deadline */}
+                            <Text>{formatDeadline(goal.nextDeadline)}</Text>
 
-                        {/* Deadline */}
-                        <Text className="text-sm text-typography-500 leading-5">
-                            {formatDeadline(goal.nextDeadline)}
-                        </Text>
+                            {/* Last completion date */}
+                            {goal.latestCompletionDate && (
+                                <Text>
+                                    Last completed:{" "}
+                                    {goal.latestCompletionDate.toLocaleDateString()}
+                                </Text>
+                            )}
 
-                        {/* Last completion date */}
-                        {goal.latestCompletionDate && (
-                            <Text className="text-xs text-typography-400 leading-4">
-                                Last completed: {goal.latestCompletionDate.toLocaleDateString()}
-                            </Text>
-                        )}
-                    </VStack>
+                            {/* Streak information */}
+                            {goal.currentStreakCount !== undefined &&
+                                goal.currentStreakCount > 0 && (
+                                    <HStack space="sm">
+                                        <Text>🔥 {goal.currentStreakCount} day streak</Text>
+                                        {goal.bestStreakCount !== undefined &&
+                                            goal.bestStreakCount > goal.currentStreakCount && (
+                                                <Text>(Best: {goal.bestStreakCount})</Text>
+                                            )}
+                                    </HStack>
+                                )}
 
-                    {/* Completion button - only show for own goals */}
-                    {/* Requirement 8.3: Touch targets at least 44x44 pixels */}
-                    {!showOwner && (
-                        <Button
-                            size="sm"
-                            onPress={handleComplete}
-                            disabled={loading}
-                            action={goal.currentStatus === "Green" ? "positive" : "primary"}
-                            style={{ minWidth: 44, minHeight: 44 }}
-                        >
-                            <ButtonText>
+                            {/* Difficulty indicator */}
+                            <HStack space="sm">
+                                <Text>
+                                    Difficulty:{" "}
+                                    {goal.difficulty === "easy"
+                                        ? "Easy (1x)"
+                                        : goal.difficulty === "medium"
+                                            ? "Medium (1.5x)"
+                                            : "Hard (2x)"}
+                                </Text>
+                            </HStack>
+                        </VStack>
+
+                        {/* Completion button - only show for own goals */}
+                        {/* Requirement 8.3: Touch targets at least 44x44 pixels */}
+                        {!showOwner && (
+                            <Button
+                                size="sm"
+                                onPress={(e?: GestureResponderEvent) => {
+                                    if (e) {
+                                        e.stopPropagation();
+                                    }
+                                    handleComplete();
+                                }}
+                                disabled={loading}
+                                style={{ minWidth: 44, minHeight: 44 }}
+                            >
                                 {loading
                                     ? "..."
                                     : goal.currentStatus === "Green"
                                         ? "✓"
                                         : "Complete"}
-                            </ButtonText>
-                        </Button>
-                    )}
-                </HStack>
-            </Card>
+                            </Button>
+                        )}
+                    </HStack>
+                </Card>
+            </TouchableOpacity>
         </Animated.View>
     );
 }

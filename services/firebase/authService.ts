@@ -113,14 +113,19 @@ export async function signUp(
         // Initialize user document in Firestore
         // Requirement 1.3: Initialize with displayName, shameScore=0, empty friends array
         const userDocRef = getUserDoc(user.uid);
+        const trimmedDisplayName = displayName.trim();
+        const trimmedEmail = email.trim();
         await retryWithBackoff(
             () =>
                 setDoc(userDocRef, {
-                    displayName: displayName.trim(),
+                    displayName: trimmedDisplayName,
+                    email: trimmedEmail,
                     shameScore: 0,
                     friends: [],
                     fcmToken: null,
                     createdAt: serverTimestamp(),
+                    searchableEmail: trimmedEmail.toLowerCase(),
+                    searchableName: trimmedDisplayName.toLowerCase(),
                 }),
             { maxAttempts: 3 },
         );

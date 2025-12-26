@@ -1,0 +1,93 @@
+// Jest setup file
+// Mock AsyncStorage
+jest.mock("@react-native-async-storage/async-storage", () => ({
+    __esModule: true,
+    default: {
+        getItem: jest.fn(),
+        setItem: jest.fn(),
+        removeItem: jest.fn(),
+        clear: jest.fn(),
+    },
+}));
+
+// Mock Firebase modules that require native modules
+jest.mock("firebase/auth", () => ({
+    getReactNativePersistence: jest.fn(),
+    initializeAuth: jest.fn(() => ({})),
+}));
+
+// Mock Expo modules
+jest.mock("expo", () => ({
+    __ExpoImportMetaRegistry: {},
+}));
+
+jest.mock("expo/src/winter/runtime.native", () => ({}));
+jest.mock("expo/src/winter/installGlobal", () => ({}));
+
+// Mock Expo Haptics
+jest.mock("expo-haptics", () => ({
+    impactAsync: jest.fn(),
+    notificationAsync: jest.fn(),
+    selectionAsync: jest.fn(),
+    ImpactFeedbackStyle: {
+        Light: "light",
+        Medium: "medium",
+        Heavy: "heavy",
+    },
+    NotificationFeedbackType: {
+        Success: "success",
+        Warning: "warning",
+        Error: "error",
+    },
+}));
+
+// Mock Expo AV
+jest.mock("expo-av", () => ({
+    Audio: {
+        Sound: {
+            createAsync: jest.fn(() =>
+                Promise.resolve({
+                    sound: {
+                        playAsync: jest.fn(),
+                        unloadAsync: jest.fn(),
+                    },
+                }),
+            ),
+        },
+        setAudioModeAsync: jest.fn(),
+    },
+}));
+
+// Mock Expo Notifications
+jest.mock("expo-notifications", () => ({
+    scheduleNotificationAsync: jest.fn(),
+    cancelScheduledNotificationAsync: jest.fn(),
+    setNotificationHandler: jest.fn(),
+    getPermissionsAsync: jest.fn(() => Promise.resolve({ status: "granted" })),
+    requestPermissionsAsync: jest.fn(() =>
+        Promise.resolve({ status: "granted" }),
+    ),
+}));
+
+// Mock React Native modules
+jest.mock("react-native", () => ({
+    Platform: { OS: "ios" },
+    Dimensions: { get: () => ({ width: 375, height: 812 }) },
+    Animated: {
+        Value: jest.fn(() => ({
+            setValue: jest.fn(),
+            addListener: jest.fn(),
+            removeListener: jest.fn(),
+        })),
+        timing: jest.fn(() => ({
+            start: jest.fn(),
+        })),
+        spring: jest.fn(() => ({
+            start: jest.fn(),
+        })),
+        View: "View",
+    },
+}));
+
+// Mock React Native Confetti Cannon
+jest.mock("react-native-confetti-cannon", () => "ConfettiCannon");
