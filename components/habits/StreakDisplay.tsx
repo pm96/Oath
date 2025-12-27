@@ -4,10 +4,6 @@ import { useThemeStyles } from "../../hooks/useTheme";
 import { HabitStreak } from "../../types/habit-streaks";
 import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
-import {
-    StreakCelebrationView,
-    StreakCelebrationViewRef,
-} from "./StreakCelebrationView";
 
 export interface StreakDisplayProps {
     streak: HabitStreak | null;
@@ -35,36 +31,6 @@ export function StreakDisplay({
     onStreakUpdate,
 }: StreakDisplayProps) {
     const { colors, spacing, typography } = useThemeStyles();
-    const celebrationRef = useRef<StreakCelebrationViewRef>(null);
-
-    // Handle streak updates and trigger celebrations
-    React.useEffect(() => {
-        if (onStreakUpdate && streak) {
-            // This would be called when streak updates
-            // For now, we'll just set up the celebration system
-        }
-    }, [streak, onStreakUpdate]);
-
-    /**
-     * Trigger celebration for milestone achievements
-     * Requirements: 3.1, 3.2 - Milestone celebration triggering
-     */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const triggerMilestoneCelebration = (days: number) => {
-        if (enableCelebrations && celebrationRef.current) {
-            celebrationRef.current.celebrateMilestone(days);
-        }
-    };
-
-    /**
-     * Trigger celebration for streak completion
-     */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const triggerStreakCelebration = () => {
-        if (enableCelebrations && celebrationRef.current) {
-            celebrationRef.current.celebrateCompletion();
-        }
-    };
 
     const getSizeStyles = () => {
         switch (size) {
@@ -354,21 +320,6 @@ export function StreakDisplay({
                     </View>
                 )}
             </Card>
-
-            {/* Celebration Layer */}
-            {enableCelebrations && (
-                <StreakCelebrationView
-                    ref={celebrationRef}
-                    style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        pointerEvents: "none",
-                    }}
-                />
-            )}
         </View>
     );
 }

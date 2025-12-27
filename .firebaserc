@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "oath-34449"
-  }
+    "default": "oath-34449",
+    "staging": "oath-2-971d0"
+  },
+  "targets": {},
+  "etags": {}
 }

@@ -360,7 +360,9 @@ export function StreakAnalytics({
                     >
                         Completion Trends
                     </Text>
-                    <HabitAnalyticsChart trends={trends} height={200} />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <HabitAnalyticsChart trends={trends} height={200} />
+                    </ScrollView>
                 </Card>
 
                 {/* Trend Analysis */}

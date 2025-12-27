@@ -1,11 +1,13 @@
 import { StreakDashboard } from "@/components/habits";
 import { Button, Container, Heading } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { useGoals } from "@/hooks/useGoals";
 import { useThemeStyles } from "@/hooks/useTheme";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
-import React from "react";
-import { View } from "react-native";
+import { ArrowLeft, Trash2 } from "lucide-react-native";
+import React, { useCallback, useState } from "react";
+import { Alert, View } from "react-native";
 import { SafeAreaView } from "@/components/ui/safe-area-view";
 
 /**
@@ -16,11 +18,51 @@ import { SafeAreaView } from "@/components/ui/safe-area-view";
  */
 export default function HabitDetailScreen() {
     const { user } = useAuth();
+    const { deleteGoal } = useGoals();
     const { colors, spacing } = useThemeStyles();
     const { habitId, habitName } = useLocalSearchParams<{
         habitId: string;
         habitName: string;
     }>();
+
+    const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+    const [dashboardError, setDashboardError] = useState(false);
+
+    const handleDelete = async () => {
+        if (!habitId) return;
+
+        Alert.alert(
+            "Delete Habit",
+            `Are you sure you want to delete "${habitName}"? This action cannot be undone.`,
+            [
+                {
+                    text: "Cancel",
+                    style: "cancel",
+                },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await deleteGoal(habitId);
+                            showSuccessToast("Habit deleted successfully.");
+                            router.back();
+                        } catch (error) {
+                            showErrorToast(
+                                "Failed to delete habit. Please try again.",
+                            );
+                            console.error("Failed to delete habit:", error);
+                        }
+                    },
+                },
+            ],
+        );
+    };
+
+    const handleDashboardLoadingChange = useCallback((loading: boolean, error: boolean) => {
+        setIsDashboardLoading(loading);
+        setDashboardError(error);
+    }, []);
 
     if (!habitId || !user?.uid) {
         return (
@@ -72,14 +114,29 @@ export default function HabitDetailScreen() {
             </View>
 
             {/* Streak Dashboard */}
-            <StreakDashboard
-                habitId={habitId}
-                userId={user.uid}
-                habitName={habitName || "Habit"}
-                onStreakUpdate={(streak) => {
-                    console.log("Streak updated:", streak);
-                }}
-            />
+            <View style={{ flex: 1 }}>
+                <StreakDashboard
+                    habitId={habitId}
+                    userId={user.uid}
+                    habitName={habitName || "Habit"}
+                    onStreakUpdate={(streak) => {
+                        console.log("Streak updated:", streak);
+                    }}
+                    onLoadingChange={handleDashboardLoadingChange}
+                />
+            </View>
+            {!isDashboardLoading && !dashboardError && (
+                <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                    <Button
+                        variant="outline"
+                        onPress={handleDelete}
+                        style={{ borderColor: colors.destructive, backgroundColor: colors.background }}
+                    >
+                        <Trash2 size={16} color={colors.destructive} style={{ marginRight: spacing.sm }} />
+                        <Heading size="sm" style={{ color: colors.destructive }}>Delete Habit</Heading>
+                    </Button>
+                </View>
+            )}
         </SafeAreaView>
     );
 }

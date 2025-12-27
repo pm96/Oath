@@ -8,7 +8,6 @@ import { Card } from "../ui/Card";
 import { LoadingSkeleton } from "../ui/LoadingSkeleton";
 import { Text } from "../ui/Text";
 import { StreakAnalytics } from "./StreakAnalytics";
-import { StreakCalendar } from "./StreakCalendar";
 import { StreakDisplay } from "./StreakDisplay";
 import { StreakMilestones } from "./StreakMilestones";
 
@@ -18,6 +17,7 @@ export interface StreakDashboardProps {
     habitName: string;
     style?: ViewStyle;
     onStreakUpdate?: (streak: HabitStreak) => void;
+    onLoadingChange?: (loading: boolean, error: boolean) => void;
 }
 
 /**
@@ -32,6 +32,7 @@ export function StreakDashboard({
     habitName,
     style,
     onStreakUpdate,
+    onLoadingChange,
 }: StreakDashboardProps) {
     const { colors, spacing, typography } = useThemeStyles();
     const [streak, setStreak] = useState<HabitStreak | null>(null);
@@ -42,11 +43,16 @@ export function StreakDashboard({
 
     const loadStreakData = useCallback(
         async (isRefresh = false) => {
+            let currentError: string | null = null;
+            let currentLoading = true;
             try {
                 if (!isRefresh) {
                     setLoading(true);
+                    currentLoading = true;
                 }
                 setError(null);
+                currentError = null;
+                onLoadingChange?.(currentLoading, !!currentError);
 
                 // Load streak data and calendar in parallel
                 const [streakData, calendar] = await Promise.all([
@@ -68,15 +74,18 @@ export function StreakDashboard({
             } catch (err) {
                 const message = getUserFriendlyErrorMessage(err);
                 setError(message);
+                currentError = message;
                 console.error("Failed to load streak data:", err);
             } finally {
                 setLoading(false);
+                currentLoading = false;
+                onLoadingChange?.(currentLoading, !!currentError);
                 if (isRefresh) {
                     setRefreshing(false);
                 }
             }
         },
-        [habitId, userId, onStreakUpdate],
+        [habitId, userId, onStreakUpdate, onLoadingChange],
     );
 
     useEffect(() => {
@@ -87,11 +96,6 @@ export function StreakDashboard({
         setRefreshing(true);
         loadStreakData(true);
     }, [loadStreakData]);
-
-    const handleDayPress = useCallback((day: CalendarDay) => {
-        // Handle day press - could show completion details or allow editing
-        console.log("Day pressed:", day);
-    }, []);
 
     if (loading) {
         return (
@@ -202,14 +206,6 @@ export function StreakDashboard({
                 <StreakMilestones
                     streak={streak}
                     showProgress={true}
-                    style={{ marginBottom: spacing.lg }}
-                />
-
-                {/* Calendar */}
-                <StreakCalendar
-                    calendarData={calendarData}
-                    onDayPress={handleDayPress}
-                    showLegend={true}
                     style={{ marginBottom: spacing.lg }}
                 />
 

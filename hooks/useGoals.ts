@@ -4,6 +4,7 @@ import { Goal } from "../services/firebase/collections";
 import {
     completeGoal as completeGoalService,
     createGoal as createGoalService,
+    deleteGoal as deleteGoalService,
     fetchUserGoalsOnce,
     getGoalStreak,
     getUserGoals,
@@ -169,6 +170,21 @@ export function useGoals() {
     };
 
     /**
+     * Delete a goal
+     */
+    const deleteGoal = async (goalId: string): Promise<void> => {
+        try {
+            await deleteGoalService(goalId);
+            setGoals((prevGoals) => prevGoals.filter((g) => g.id !== goalId));
+        } catch (err) {
+            const error =
+                err instanceof Error ? err : new Error("Failed to delete goal");
+            setError(error);
+            throw error;
+        }
+    };
+
+    /**
      * Update an existing goal
      */
     const updateGoal = async (
@@ -247,6 +263,7 @@ export function useGoals() {
         error,
         createGoal,
         updateGoal,
+        deleteGoal,
         completeGoal,
         undoGoalCompletion,
         refresh,

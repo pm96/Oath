@@ -12,21 +12,26 @@ import {
     Progress,
     VStack,
 } from "@/components/ui";
-import {
-    CelebrationView,
-    CelebrationViewRef,
-} from "@/components/ui/CelebrationView";
+import { SafeAreaView } from "@/components/ui/safe-area-view";
+import { useCelebration } from "@/contexts/CelebrationContext";
 import { useAuth } from "@/hooks/useAuth";
 import { GoalWithStreak, useGoals } from "@/hooks/useGoals";
 import { useThemeStyles } from "@/hooks/useTheme";
+import { GoalInput } from "@/services/firebase/goalService";
 import { HapticFeedback } from "@/utils/celebrations";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
-import { Check, Plus } from "lucide-react-native";
-import React, { useRef, useState } from "react";
-import { Alert, RefreshControl, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "@/components/ui/safe-area-view";
-import { GoalInput } from "@/services/firebase/goalService";
 import { router } from "expo-router";
+import { Check, Plus, Trash2 } from "lucide-react-native";
+import React, { useCallback, useRef, useState } from "react";
+import {
+    Alert,
+    Animated,
+    RefreshControl,
+    ScrollView,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 
 /**
  * Modern redesigned Home screen
@@ -40,12 +45,15 @@ export default function Home() {
         createGoal,
         completeGoal,
         undoGoalCompletion,
+        deleteGoal,
         refresh,
     } = useGoals();
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const { colors, spacing } = useThemeStyles();
-    const celebrationRef = useRef<CelebrationViewRef>(null);
+    const { triggerCelebration } = useCelebration();
+
+    const openSwipeableRowRef = useRef<Swipeable | null>(null);
 
     // Get current date for greeting
     const getCurrentGreeting = () => {
@@ -54,6 +62,35 @@ export default function Home() {
         if (hour < 17) return "Good afternoon";
         return "Good evening";
     };
+
+    const confirmDeleteGoal = useCallback(
+        (goal: GoalWithStreak) => {
+            Alert.alert(
+                "Delete Habit",
+                `Are you sure you want to delete "${goal.description}"? This action cannot be undone.`,
+                [
+                    {
+                        text: "Cancel",
+                        style: "cancel",
+                        onPress: () => openSwipeableRowRef.current?.close(),
+                    },
+                    {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: async () => {
+                            try {
+                                await deleteGoal(goal.id);
+                                showSuccessToast("Habit deleted.");
+                            } catch (error: any) {
+                                showErrorToast(error.message || "Failed to delete habit.");
+                            }
+                        },
+                    },
+                ],
+            );
+        },
+        [deleteGoal],
+    );
 
     const getCurrentDate = () => {
         return new Date()
@@ -94,16 +131,8 @@ export default function Home() {
     const handleCompleteGoal = async (goalId: string) => {
         try {
             await completeGoal(goalId);
-
-            // Trigger celebration animation
-            // Requirements: 3.2, 7.4 - Confetti animation for goal completion
-            setTimeout(() => {
-                celebrationRef.current?.celebrate();
-            }, 300);
-
-            // Success haptic feedback
+            triggerCelebration({ type: "goalCompletion" });
             HapticFeedback.success();
-
             showSuccessToast("Habit completed! 🎉");
         } catch (error: any) {
             HapticFeedback.error();
@@ -159,92 +188,154 @@ export default function Home() {
             "This removes today's completion and updates your streak.",
             [
                 { text: "Keep it", style: "cancel" },
-                { text: "Undo", style: "destructive", onPress: () => handleUndoGoal(goal.id) },
+                {
+                    text: "Undo",
+                    style: "destructive",
+                    onPress: () => handleUndoGoal(goal.id),
+                },
             ],
         );
     };
 
-    const renderGoalCard = (goal: GoalWithStreak, index: number) => {
+    const GoalCard = ({
+        goal,
+        index,
+        onDelete,
+        onComplete,
+        onUndo,
+        onOpenDetails,
+        onSwipeableOpen,
+    }: {
+        goal: GoalWithStreak;
+        index: number;
+        onDelete: (goal: GoalWithStreak) => void;
+        onComplete: (goalId: string) => void;
+        onUndo: (goal: GoalWithStreak) => void;
+        onOpenDetails: (goal: GoalWithStreak) => void;
+        onSwipeableOpen: (ref: Swipeable) => void;
+    }) => {
+        const { colors, spacing } = useThemeStyles();
         const today = new Date().toDateString();
         const isCompletedToday =
             goal.latestCompletionDate &&
             new Date(goal.latestCompletionDate).toDateString() === today;
         const currentStreakCount = goal.currentStreakCount ?? 0;
         const bestStreakCount = goal.bestStreakCount ?? 0;
+        const rowRef = useRef<Swipeable>(null);
+
+        const renderRightActions = (
+            progress: Animated.AnimatedInterpolation<number>,
+            dragX: Animated.AnimatedInterpolation<number>,
+        ) => {
+            const trans = dragX.interpolate({
+                inputRange: [-80, 0],
+                outputRange: [0, 80],
+                extrapolate: "clamp",
+            });
+            return (
+                <TouchableOpacity
+                    onPress={() => onDelete(goal)}
+                    style={{ width: 80, justifyContent: "center", alignItems: "center" }}
+                >
+                    <Animated.View
+                        style={{
+                            backgroundColor: colors.destructive,
+                            justifyContent: "center",
+                            alignItems: "center",
+                            width: 60,
+                            height: 60,
+                            borderRadius: 30,
+                            transform: [{ translateX: trans }],
+                        }}
+                    >
+                        <Trash2 size={24} color="white" />
+                    </Animated.View>
+                </TouchableOpacity>
+            );
+        };
 
         return (
-            <AnimatedView
-                key={goal.id}
-                animation="slideInFromBottom"
-                delay={index * 100}
+            <Swipeable
+                ref={rowRef}
+                friction={2}
+                rightThreshold={40}
+                renderRightActions={renderRightActions}
+                onSwipeableOpen={() => {
+                    if (rowRef.current) {
+                        onSwipeableOpen(rowRef.current);
+                    }
+                }}
             >
-                <Card
-                    variant="default"
-                    padding="md"
-                    onPress={() => handleOpenGoalDetails(goal)}
+                <AnimatedView
+                    key={goal.id}
+                    animation="slideInFromBottom"
+                    delay={index * 100}
                 >
-                    <HStack
-                        justify="between"
-                        align="center"
-                        style={{ marginBottom: spacing.md }}
+                    <Card
+                        style={{ marginBottom: 4 }}
+                        variant="outlined"
+                        padding="md"
+                        onPress={() => onOpenDetails(goal)}
                     >
-                        <VStack style={{ flex: 1 }} spacing="xs">
-                            <Heading size="md">{goal.description}</Heading>
-                            <HStack spacing="sm" align="center">
-                                {goal.type === "time" && (
-                                    <Caption color="muted">
-                                        ⏰ {goal.targetTime || "07:00"}
+                        <HStack justify="space-between" align="center">
+                            <VStack style={{ flex: 1 }} spacing="xs">
+                                <Heading size="md">{goal.description}</Heading>
+                                <HStack spacing="sm" align="center">
+                                    {goal.type === "time" && (
+                                        <Caption color="muted">
+                                            ⏰ {goal.targetTime || "07:00"}
+                                        </Caption>
+                                    )}
+                                    {goal.type === "flexible" && (
+                                        <Caption color="muted">⚡ Flexible</Caption>
+                                    )}
+                                    {goal.isShared && (
+                                        <Caption color="success">👥 Shared</Caption>
+                                    )}
+                                </HStack>
+                                {currentStreakCount > 0 && (
+                                    <Caption color="warning">
+                                        {"🔥 " +
+                                            currentStreakCount +
+                                            " day streak" +
+                                            (bestStreakCount > currentStreakCount
+                                                ? " (Best: " + bestStreakCount + ")"
+                                                : "")}
                                     </Caption>
                                 )}
-                                {goal.type === "flexible" && (
-                                    <Caption color="muted">⚡ Flexible</Caption>
-                                )}
-                                {goal.isShared && (
-                                    <Caption color="success">👥 Shared</Caption>
-                                )}
-                            </HStack>
-                            {currentStreakCount > 0 && (
-                                <Caption color="warning">
-                                    {"🔥 " +
-                                        currentStreakCount +
-                                        " day streak" +
-                                        (bestStreakCount > currentStreakCount
-                                            ? " (Best: " + bestStreakCount + ")"
-                                            : "")}
-                                </Caption>
-                            )}
-                        </VStack>
+                            </VStack>
 
-                        <VStack align="center" spacing="xs">
-                            {isCompletedToday ? (
-                                <Button
-                                    variant="success"
-                                    size="sm"
-                                    onPress={() => confirmUndoGoal(goal)}
-                                    accessibilityLabel={`Undo completion for ${goal.description}`}
-                                    accessibilityHint="Double tap to mark this habit as not done"
-                                >
-                                    <Check
-                                        size={16}
-                                        color={colors.primaryForeground}
-                                        style={{ marginRight: spacing.xs }}
-                                    />
-                                    Completed
-                                </Button>
-                            ) : (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onPress={() => handleCompleteGoal(goal.id)}
-                                    accessibilityLabel={`Mark ${goal.description} as done`}
-                                >
-                                    Mark Done
-                                </Button>
-                            )}
-                        </VStack>
-                    </HStack>
-                </Card>
-            </AnimatedView>
+                            <VStack align="center" spacing="xs">
+                                {isCompletedToday ? (
+                                    <Button
+                                        variant="success"
+                                        size="sm"
+                                        onPress={() => onUndo(goal)}
+                                        accessibilityLabel={`Undo completion for ${goal.description}`}
+                                        accessibilityHint="Double tap to mark this habit as not done"
+                                    >
+                                        <Check
+                                            size={16}
+                                            color={colors.primaryForeground}
+                                            style={{ marginRight: spacing.xs }}
+                                        />
+                                        Completed
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onPress={() => onComplete(goal.id)}
+                                        accessibilityLabel={`Mark ${goal.description} as done`}
+                                    >
+                                        Mark Done
+                                    </Button>
+                                )}
+                            </VStack>
+                        </HStack>
+                    </Card>
+                </AnimatedView>
+            </Swipeable>
         );
     };
 
@@ -372,9 +463,28 @@ export default function Home() {
                     {loading ? (
                         renderLoadingSkeleton()
                     ) : goals.length > 0 ? (
-                        <View>
-                            {goals.map((goal, index) => renderGoalCard(goal, index))}
-                        </View>
+                        <VStack spacing="md">
+                            {goals.map((goal, index) => (
+                                <GoalCard
+                                    key={goal.id}
+                                    goal={goal}
+                                    index={index}
+                                    onDelete={confirmDeleteGoal}
+                                    onComplete={handleCompleteGoal}
+                                    onUndo={confirmUndoGoal}
+                                    onOpenDetails={handleOpenGoalDetails}
+                                    onSwipeableOpen={(ref) => {
+                                        if (
+                                            openSwipeableRowRef.current &&
+                                            ref !== openSwipeableRowRef.current
+                                        ) {
+                                            openSwipeableRowRef.current.close();
+                                        }
+                                        openSwipeableRowRef.current = ref;
+                                    }}
+                                />
+                            ))}
+                        </VStack>
                     ) : (
                         <AnimatedView animation="fadeIn" delay={300}>
                             <Card variant="outlined" padding="lg">
@@ -406,10 +516,6 @@ export default function Home() {
                 onClose={() => setShowCreateForm(false)}
                 onSubmit={handleCreateGoal}
             />
-
-            {/* Celebration View for confetti animations */}
-            {/* Requirements: 3.2, 7.4 - Confetti celebration for goal completion */}
-            <CelebrationView ref={celebrationRef} type="goalCompletion" />
         </SafeAreaView>
     );
 }

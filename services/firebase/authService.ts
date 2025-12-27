@@ -110,6 +110,9 @@ export async function signUp(
         );
         const user = userCredential.user;
 
+        // Generate invite code
+        const inviteCode = user.uid.slice(-6).toUpperCase();
+
         // Initialize user document in Firestore
         // Requirement 1.3: Initialize with displayName, shameScore=0, empty friends array
         const userDocRef = getUserDoc(user.uid);
@@ -126,6 +129,7 @@ export async function signUp(
                     createdAt: serverTimestamp(),
                     searchableEmail: trimmedEmail.toLowerCase(),
                     searchableName: trimmedDisplayName.toLowerCase(),
+                    inviteCode: inviteCode,
                 }),
             { maxAttempts: 3 },
         );

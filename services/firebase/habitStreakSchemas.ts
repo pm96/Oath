@@ -35,7 +35,7 @@ export const StreakDocumentSchema = z.object({
     userId: z.string().min(1),
     currentStreak: z.number().int().min(0),
     bestStreak: z.number().int().min(0),
-    lastCompletionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    lastCompletionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")),
     streakStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     freezesAvailable: z.number().int().min(0),
     freezesUsed: z.number().int().min(0),

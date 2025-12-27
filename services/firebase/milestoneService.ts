@@ -13,7 +13,6 @@ import {
     MILESTONE_DAYS,
     StreakMilestone,
 } from "../../types/habit-streaks";
-import { celebrationManager } from "../../utils/celebrations";
 import {
     getUserFriendlyErrorMessage,
     retryWithBackoff,
@@ -53,15 +52,6 @@ export class MilestoneService {
         try {
             // Mark milestone as celebrated
             await this.markMilestoneCelebrated(userId, habitId, milestone.days);
-
-            // Trigger celebration animation and haptics
-            if (milestone.days === 7) {
-                // First milestone - basic celebration
-                celebrationManager.celebrateGoalCompletion();
-            } else {
-                // Major milestone - enhanced celebration
-                celebrationManager.celebrateStreakMilestone(milestone.days);
-            }
 
             // Log celebration for analytics (could be used for notifications)
             console.log(

@@ -115,6 +115,29 @@ export async function undoHabitCompletion(payload: { habitId: string }) {
 }
 
 /**
+ * Deletes a habit and all associated data via a Cloud Function.
+ */
+export async function deleteHabit(payload: { habitId: string }): Promise<{ success: boolean }> {
+    try {
+        const callable = httpsCallable<
+            { habitId: string },
+            { success: boolean }
+        >(functions, "deleteHabit");
+
+        const result = await callable(payload);
+        return result.data;
+    } catch (error: any) {
+        console.error("Error deleting habit:", error);
+
+        if (error.code === "permission-denied") {
+            throw new Error("You do not have permission to delete this habit.");
+        }
+
+        throw new Error("Failed to delete habit. Please try again.");
+    }
+}
+
+/**
  * Register FCM token for push notifications
  * This should be called when the user logs in or when the FCM token is refreshed
  *

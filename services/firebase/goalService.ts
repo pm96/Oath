@@ -16,6 +16,7 @@ import {
 import {
     recordHabitCompletion,
     undoHabitCompletion as undoHabitCompletionFunction,
+    deleteHabit,
 } from "./cloudFunctions";
 import { getGoalDoc, getGoalsCollection, Goal } from "./collections";
 import { streakService } from "./streakService";
@@ -270,6 +271,22 @@ export async function undoGoalCompletion(goalId: string): Promise<void> {
         console.error(error);
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(message);
+    }
+}
+
+/**
+ * Deletes a goal and all associated data.
+ */
+export async function deleteGoal(goalId: string): Promise<void> {
+    if (!goalId) {
+        throw new Error("Goal ID is required to delete.");
+    }
+
+    try {
+        await deleteHabit({ habitId: goalId });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to delete habit: ${message}`);
     }
 }
 

@@ -4,6 +4,7 @@ import { ToastProvider } from "@/components/ToastProvider";
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
 import { VStack } from "@/components/ui/vstack";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { CelebrationProvider } from "@/contexts/CelebrationContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import "@/global.css";
 import { useAuth } from "@/hooks/useAuth";
@@ -109,15 +110,17 @@ export default function RootLayout() {
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <ThemeProvider>
-                <ErrorBoundary>
-                    <GluestackUIProvider>
-                        <ToastProvider>
-                            <AuthProvider>
-                                <RootNavigator />
-                            </AuthProvider>
-                        </ToastProvider>
-                    </GluestackUIProvider>
-                </ErrorBoundary>
+                <CelebrationProvider>
+                    <ErrorBoundary>
+                        <GluestackUIProvider>
+                            <ToastProvider>
+                                <AuthProvider>
+                                    <RootNavigator />
+                                </AuthProvider>
+                            </ToastProvider>
+                        </GluestackUIProvider>
+                    </ErrorBoundary>
+                </CelebrationProvider>
             </ThemeProvider>
         </GestureHandlerRootView>
     );

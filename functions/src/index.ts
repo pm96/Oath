@@ -1,11 +1,11 @@
 import * as admin from "firebase-admin";
-import type { DocumentData, Timestamp } from "firebase-admin/firestore";
 import {
     onDocumentCreated,
     onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import type { DocumentData, Timestamp } from "firebase-admin/firestore";
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -39,7 +39,6 @@ type CompletionDoc = DocumentData & {
 export const recordHabitCompletion = onCall(async (request) => {
     console.log("recordHabitCompletion function called");
 
-    // Verify authentication
     if (!request.auth) {
         throw new HttpsError(
             "unauthenticated",
@@ -58,12 +57,10 @@ export const recordHabitCompletion = onCall(async (request) => {
     }
 
     try {
-        // Validate completion data
         const completionTimestamp =
             admin.firestore.Timestamp.fromMillis(completedAt);
         const now = admin.firestore.Timestamp.now();
 
-        // Prevent future completions (Requirements 12.1)
         if (completionTimestamp.toMillis() > now.toMillis()) {
             throw new HttpsError(
                 "invalid-argument",
@@ -71,7 +68,6 @@ export const recordHabitCompletion = onCall(async (request) => {
             );
         }
 
-        // Prevent completions more than 24 hours old
         const timeDiff = now.toMillis() - completionTimestamp.toMillis();
         if (timeDiff > 24 * 60 * 60 * 1000) {
             throw new HttpsError(
@@ -80,89 +76,78 @@ export const recordHabitCompletion = onCall(async (request) => {
             );
         }
 
-        // Use transaction to ensure data consistency
         const result = await db.runTransaction(async (transaction) => {
-            // Check for existing completion on the same date
+            // --- 1. ALL READS ---
+            const goalRef = db.doc(`artifacts/${APP_ID}/public/data/goals/${habitId}`);
+            const streakRef = db.doc(
+                `artifacts/${APP_ID}/streaks/${userId}_${habitId}`,
+            );
             const completionsRef = db.collection(`artifacts/${APP_ID}/completions`);
             const existingQuery = completionsRef
                 .where("habitId", "==", habitId)
                 .where("userId", "==", userId);
 
-            const existingSnapshot = await transaction.get(existingQuery);
+            const goalDoc = await transaction.get(goalRef);
+            const existingStreakDoc = await transaction.get(streakRef);
+            const existingCompletionsSnapshot = await transaction.get(existingQuery);
 
-            // Check if completion already exists for this date
-            const userTimezone = timezone || "UTC";
+            // --- 2. ALL VALIDATION AND LOGIC ---
+            if (!goalDoc.exists) {
+                throw new HttpsError("not-found", "Goal not found");
+            }
+            const goalData = goalDoc.data();
+            if (goalData?.ownerId !== userId) {
+                throw new HttpsError("permission-denied", "You do not own this goal");
+            }
+
             const completionDateString = completionTimestamp
                 .toDate()
                 .toISOString()
                 .split("T")[0];
 
-            const existingCompletions = existingSnapshot.docs.filter((doc) => {
+            const alreadyCompleted = existingCompletionsSnapshot.docs.some((doc) => {
                 const data = doc.data();
                 const existingDateString = data.completedAt
                     .toDate()
                     .toISOString()
                     .split("T")[0];
-                const isActive = data.isActive !== false;
-                return isActive && existingDateString === completionDateString;
+                return data.isActive !== false && existingDateString === completionDateString;
             });
 
-            if (existingCompletions.length > 0) {
+            if (alreadyCompleted) {
                 throw new HttpsError(
                     "already-exists",
                     "Habit already completed for this date",
                 );
             }
 
-            // Create completion record
             const completionData = {
                 habitId,
                 userId,
                 completedAt: completionTimestamp,
-                timezone: userTimezone,
+                timezone: timezone || "UTC",
                 notes: notes || "",
                 difficulty,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             };
 
-            const completionRef = completionsRef.doc();
-            transaction.set(completionRef, completionData);
-
-            // Get all completions for streak calculation
-            const allCompletionsSnapshot = await transaction.get(existingQuery);
-            const allCompletions = allCompletionsSnapshot.docs
+            const allCompletions = existingCompletionsSnapshot.docs
                 .filter((doc) => doc.data().isActive !== false)
-                .map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
+                .map((doc) => ({ id: doc.id, ...doc.data() }));
 
-            // Add the new completion
-            allCompletions.push({
-                id: completionRef.id,
-                ...completionData,
-            });
+            const newCompletionRef = completionsRef.doc();
+            allCompletions.push({ id: newCompletionRef.id, ...completionData });
 
-            // Calculate updated streak
             const updatedStreak = calculateStreakFromCompletions(
                 allCompletions,
                 habitId,
                 userId,
             );
 
-            // Check for new milestones
-            const streakRef = db.doc(
-                `artifacts/${APP_ID}/streaks/${userId}_${habitId}`,
-            );
-            const existingStreakDoc = await transaction.get(streakRef);
+            const existingMilestones = (existingStreakDoc.exists
+                ? existingStreakDoc.data()?.milestones || []
+                : []) as StoredMilestone[];
 
-            let existingMilestones: StoredMilestone[] = [];
-            if (existingStreakDoc.exists) {
-                existingMilestones = (existingStreakDoc.data()?.milestones ||
-                    []) as StoredMilestone[];
-            }
-
-            // Award streak freezes for 30-day milestones
             let freezesAvailable = updatedStreak.freezesAvailable;
             const newMilestones: StoredMilestone[] = [];
             const milestoneThresholds = [7, 30, 60, 100, 365];
@@ -170,7 +155,7 @@ export const recordHabitCompletion = onCall(async (request) => {
             for (const threshold of milestoneThresholds) {
                 if (updatedStreak.currentStreak >= threshold) {
                     const existingMilestone = existingMilestones.find(
-                        (milestone) => milestone.days === threshold,
+                        (m) => m.days === threshold,
                     );
                     if (!existingMilestone) {
                         newMilestones.push({
@@ -178,63 +163,48 @@ export const recordHabitCompletion = onCall(async (request) => {
                             achievedAt: admin.firestore.FieldValue.serverTimestamp(),
                             celebrated: false,
                         });
-
-                        // Award freeze for 30-day milestones
-                        if (threshold === 30) {
-                            freezesAvailable += 1;
-                        }
+                        if (threshold === 30) freezesAvailable += 1;
                     }
                 }
             }
 
-            // Update streak data
             const streakData = {
                 habitId,
                 userId,
                 currentStreak: updatedStreak.currentStreak,
                 bestStreak: Math.max(
                     updatedStreak.bestStreak,
-                    existingStreakDoc.exists
-                        ? existingStreakDoc.data()?.bestStreak || 0
-                        : 0,
+                    existingStreakDoc.exists ? existingStreakDoc.data()?.bestStreak || 0 : 0,
                 ),
                 lastCompletionDate: completionDateString,
                 streakStartDate: updatedStreak.streakStartDate,
                 freezesAvailable,
-                freezesUsed: existingStreakDoc.exists
-                    ? existingStreakDoc.data()?.freezesUsed || 0
-                    : 0,
+                freezesUsed: existingStreakDoc.exists ? existingStreakDoc.data()?.freezesUsed || 0 : 0,
                 milestones: [...existingMilestones, ...newMilestones],
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
 
-            transaction.set(streakRef, streakData);
-
-            // Create audit log
-            const auditRef = db.collection(`artifacts/${APP_ID}/auditLogs`).doc();
-            transaction.set(auditRef, {
+            const auditData = {
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
                 userId,
                 action: "record_completion",
                 entityType: "completion",
-                entityId: completionRef.id,
+                entityId: newCompletionRef.id,
                 newData: completionData,
                 ipAddress: request.rawRequest?.ip,
                 userAgent: request.rawRequest?.get("user-agent"),
-            });
-
-            return {
-                completionId: completionRef.id,
-                streak: streakData,
-                newMilestones,
             };
+
+            // --- 3. ALL WRITES ---
+            transaction.set(newCompletionRef, completionData);
+            transaction.set(streakRef, streakData);
+            transaction.set(db.collection(`artifacts/${APP_ID}/auditLogs`).doc(), auditData);
+
+            return { completionId: newCompletionRef.id, streak: streakData, newMilestones };
         });
 
         console.log(`Completion recorded for user ${userId}, habit ${habitId}`);
-        return {
-            success: true,
-            ...result,
-        };
+        return { success: true, ...result };
     } catch (error) {
         console.error("Error in recordHabitCompletion:", error);
         if (error instanceof HttpsError) {
@@ -624,6 +594,117 @@ export const detectSuspiciousActivity = onSchedule(
 );
 
 /**
+ * Callable Cloud Function to delete a habit and all associated data
+ */
+export const deleteHabit = onCall(async (request) => {
+    console.log("deleteHabit function called");
+
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to delete habits.",
+        );
+    }
+
+    const userId = request.auth.uid;
+    const { habitId } = request.data;
+
+    if (!habitId) {
+        throw new HttpsError("invalid-argument", "habitId is required for deletion.");
+    }
+
+    // Define references to all documents that need to be deleted
+    const goalRef = db.doc(`artifacts/${APP_ID}/public/data/goals/${habitId}`);
+    const streakRef = db.doc(`artifacts/${APP_ID}/streaks/${userId}_${habitId}`);
+    const analyticsRef = db.doc(`artifacts/${APP_ID}/analytics/${userId}_${habitId}`);
+    const completionsQuery = db
+        .collection(`artifacts/${APP_ID}/completions`)
+        .where("habitId", "==", habitId)
+        .where("userId", "==", userId);
+
+    try {
+        // First, verify ownership before proceeding with any deletion.
+        const goalDoc = await goalRef.get();
+        if (!goalDoc.exists || goalDoc.data()?.ownerId !== userId) {
+            throw new HttpsError(
+                "permission-denied",
+                "You do not have permission to delete this habit.",
+            );
+        }
+
+        // Get all completion documents to delete them in a batch
+        const completionsSnapshot = await completionsQuery.get();
+
+        const batch = db.batch();
+
+        // 1. Delete all completion documents
+        completionsSnapshot.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+
+        // 2. Delete the goal document
+        batch.delete(goalRef);
+
+        // 3. Delete the streak document
+        batch.delete(streakRef);
+
+        // 4. Delete the analytics document
+        batch.delete(analyticsRef);
+
+        // Commit the batch
+        await batch.commit();
+
+        console.log(`Successfully deleted habit ${habitId} and all associated data for user ${userId}.`);
+        return { success: true, message: "Habit deleted successfully." };
+    } catch (error) {
+        console.error(`Error deleting habit ${habitId} for user ${userId}:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "Failed to delete habit.");
+    }
+});
+
+/**
+ * Callable Cloud Function to find a user by their invite code.
+ */
+export const findUserByInviteCode = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to search for friends.",
+        );
+    }
+
+    const { inviteCode } = request.data;
+
+    if (!inviteCode || typeof inviteCode !== "string" || inviteCode.length === 0) {
+        throw new HttpsError("invalid-argument", "A valid invite code is required.");
+    }
+
+    const usersRef = db.collection(`artifacts/${APP_ID}/users`);
+    const querySnapshot = await usersRef
+        .where("inviteCode", "==", inviteCode.toUpperCase())
+        .limit(1)
+        .get();
+
+    if (querySnapshot.empty) {
+        throw new HttpsError("not-found", `No user found with invite code "${inviteCode}".`);
+    }
+
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Return only public-safe data
+    return {
+        uid: userDoc.id,
+        displayName: userData.displayName,
+        email: userData.email,
+    };
+});
+
+
+/**
  * Helper function to calculate streak from completions
  */
 function calculateStreakFromCompletions(
@@ -631,7 +712,12 @@ function calculateStreakFromCompletions(
     habitId: string,
     userId: string,
 ) {
-    if (completions.length === 0) {
+    // Filter out completions that are missing a valid timestamp
+    const validCompletions = completions.filter(
+        (c) => c && c.completedAt && typeof c.completedAt.toDate === "function",
+    );
+
+    if (validCompletions.length === 0) {
         return {
             habitId,
             userId,
@@ -645,8 +731,8 @@ function calculateStreakFromCompletions(
         };
     }
 
-    // Get unique completion dates and sort them
-    const completionDates = completions
+    // Get unique completion dates from valid completions and sort them
+    const completionDates = validCompletions
         .map((comp) => comp.completedAt.toDate().toISOString().split("T")[0])
         .filter((date, index, arr) => arr.indexOf(date) === index)
         .sort();

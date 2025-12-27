@@ -45,14 +45,11 @@ export type { NotificationCardProps } from "./NotificationCard";
 export { NotificationBadge } from "./NotificationBadge";
 export type { NotificationBadgeProps } from "./NotificationBadge";
 
-export { CelebrationView } from "./CelebrationView";
-export type {
-    CelebrationViewProps,
-    CelebrationViewRef
-} from "./CelebrationView";
+
+
 
 export {
-    LazyCelebrationView, LazyComponent, LazyHabitCreationModal, LazyModal, LazyOnScroll,
+    LazyComponent, LazyHabitCreationModal, LazyModal, LazyOnScroll,
     withLazyLoading
 } from "./LazyComponent";
 

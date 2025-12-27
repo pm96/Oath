@@ -134,8 +134,8 @@ service cloud.firestore {
       // Only the owner can read their analytics (Requirements 12.3)
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       
-      // Only server-side functions can update analytics (Requirements 12.2)
-      allow write: if false;
+      // Allow users to write to their own analytics documents
+      allow write: if docIdBelongsToUser(analyticsId);
     }
 
     // Social posts collection for streak sharing - Requirements 8.2, 8.3

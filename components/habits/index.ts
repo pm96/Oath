@@ -27,9 +27,6 @@ export { StreakRecoveryModal } from "./StreakRecoveryModal";
 export { StreakDisplay } from "./StreakDisplay";
 export type { StreakDisplayProps } from "./StreakDisplay";
 
-export { StreakCalendar } from "./StreakCalendar";
-export type { StreakCalendarProps } from "./StreakCalendar";
-
 export { StreakMilestones } from "./StreakMilestones";
 export type { StreakMilestonesProps } from "./StreakMilestones";
 
