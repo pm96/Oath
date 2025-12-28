@@ -42,6 +42,8 @@ app-example
 /ios
 /android
 
+.jest-cache/
+
 firebaseConfig.js
 google-services.json
 GoogleService-Info.plist
