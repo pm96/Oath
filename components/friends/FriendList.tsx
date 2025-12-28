@@ -1,6 +1,8 @@
 import { Body, Button, Caption, Card, HStack, LoadingSkeleton, VStack } from "@/components/ui";
 import { useFriends } from "@/hooks/useFriends";
 import { useThemeStyles } from "@/hooks/useTheme";
+import { blockUser } from "@/services/firebase/friendService";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import React from "react";
 import { Alert, FlatList, View } from "react-native";
 
@@ -10,18 +12,33 @@ interface FriendListProps {
 
 export function FriendList({ userId }: FriendListProps) {
     const { friendsList, loading, removeFriendById, removingFriendId } = useFriends(userId);
-    const { spacing } = useThemeStyles();
+    const { colors, spacing } = useThemeStyles();
+
+    const handleBlock = async (friendId: string) => {
+        if (!userId) return;
+        try {
+            await blockUser(userId, friendId);
+            showSuccessToast("User blocked.");
+        } catch (error: any) {
+            showErrorToast(error.message);
+        }
+    };
 
     const confirmRemove = (friendId: string, name: string) => {
         Alert.alert(
-            "Remove Friend",
-            `Are you sure you want to remove ${name} as a friend?`,
+            "Manage Friend",
+            `What would you like to do with ${name}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
-                    text: "Remove",
+                    text: "Remove Friend",
                     style: "destructive",
                     onPress: () => removeFriendById(friendId),
+                },
+                {
+                    text: "Block User",
+                    style: "destructive",
+                    onPress: () => handleBlock(friendId),
                 },
             ]
         );

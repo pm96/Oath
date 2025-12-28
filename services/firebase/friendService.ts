@@ -223,6 +223,33 @@ export async function rejectFriendRequest(requestId: string, userId: string): Pr
 }
 
 /**
+ * Blocks a user. Adds them to blockedUsers array and removes from friends list.
+ * @param currentUserId The ID of the current user.
+ * @param targetUserId The ID of the user to block.
+ */
+export async function blockUser(currentUserId: string, targetUserId: string): Promise<void> {
+    const currentUserRef = doc(db, `artifacts/oath-app/users`, currentUserId);
+    const targetUserRef = doc(db, `artifacts/oath-app/users`, targetUserId);
+
+    try {
+        await runTransaction(db, async (transaction: Transaction) => {
+            // Add targetUserId to current user's blockedUsers array
+            transaction.update(currentUserRef, { 
+                blockedUsers: arrayUnion(targetUserId),
+                friends: arrayRemove(targetUserId)
+            });
+            // Remove currentUserId from target's friends array (the rules will handle the rest)
+            transaction.update(targetUserRef, { 
+                friends: arrayRemove(currentUserId) 
+            });
+        });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to block user: ${message}`);
+    }
+}
+
+/**
  * Removes a friend from both users' friends lists.
  * @param currentUserId The ID of the current user.
  * @param friendId The ID of the friend to remove.

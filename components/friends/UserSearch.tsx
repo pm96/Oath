@@ -5,13 +5,14 @@ import { Text } from "@/components/ui/Text";
 import { useAuth } from "@/hooks/useAuth";
 import { UserSearchResult } from "@/services/firebase/collections";
 import {
+    blockUser,
     searchUsers,
     sendFriendRequest,
 } from "@/services/firebase/friendService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import * as Haptics from "expo-haptics";
 import React from "react";
-import { FlatList, Pressable, View } from "react-native";
+import { Alert, FlatList, Pressable, View } from "react-native";
 import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
 
 interface UserSearchProps {
@@ -153,6 +154,31 @@ export function UserSearch({ currentUserId, onUserSelect }: UserSearchProps) {
         setTimeout(() => setDebouncedQuery(searchQuery), 0);
     };
 
+    const handleBlock = async (targetId: string, name: string) => {
+        if (!userId) return;
+        
+        Alert.alert(
+            "Block User",
+            `Are you sure you want to block ${name}? They will no longer be able to find you or interact with you.`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Block",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await blockUser(userId, targetId);
+                            showSuccessToast("User blocked.");
+                            setSearchResults(prev => prev.filter(r => r.userId !== targetId));
+                        } catch (error: any) {
+                            showErrorToast(error.message);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     /**
      * Get button text and action based on relationship status
      * Requirement 1.3: Indicate relationship status
@@ -160,56 +186,32 @@ export function UserSearch({ currentUserId, onUserSelect }: UserSearchProps) {
     const getActionButton = (result: UserSearchResult) => {
         const isLoading = sendingRequestTo === result.userId;
 
-        switch (result.relationshipStatus) {
-            case "friend":
-                return (
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        disabled
-                        onPress={() => { }} // No-op for friends
-                    >
-                        Friends
-                    </Button>
-                );
-
-            case "pending_sent":
-                return (
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        disabled
-                        onPress={() => { }} // No-op for pending
-                    >
-                        Pending
-                    </Button>
-                );
-
-            case "pending_received":
-                return (
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        disabled
-                        onPress={() => { }} // No-op for pending received
-                    >
-                        Pending
-                    </Button>
-                );
-
-            case "none":
-            default:
-                return (
+        return (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+                {result.relationshipStatus === "none" && (
                     <Button
                         size="sm"
                         variant="primary"
                         onPress={() => handleSendFriendRequest(result.userId)}
                         disabled={isLoading}
                     >
-                        {isLoading ? "Loading..." : "Add Friend"}
+                        {isLoading ? "..." : "Add"}
                     </Button>
-                );
-        }
+                )}
+                {result.relationshipStatus !== "none" && (
+                    <Button size="sm" variant="outline" disabled onPress={() => { }}>
+                        {result.relationshipStatus === "friend" ? "Friends" : "Pending"}
+                    </Button>
+                )}
+                <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onPress={() => handleBlock(result.userId, result.displayName)}
+                >
+                    <Text style={{ color: '#ef4444', fontSize: 12 }}>Block</Text>
+                </Button>
+            </View>
+        );
     };
 
     /**

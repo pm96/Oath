@@ -14,13 +14,22 @@ service cloud.firestore {
     // Helper function to check if user is in owner's friends list
     function isFriend(ownerId) {
       return isAuthenticated() && 
-             request.auth.uid in get(/databases/$(database)/documents/artifacts/oath-app/users/$(ownerId)).data.friends;
+             request.auth.uid in get(/databases/$(database)/documents/artifacts/oath-app/users/$(ownerId)).data.friends &&
+             !(request.auth.uid in get(/databases/$(database)/documents/artifacts/oath-app/users/$(ownerId)).data.blockedUsers);
+    }
+
+    // Helper function to check if user is blocked by another user
+    function isBlockedBy(userId) {
+      return isAuthenticated() &&
+             request.auth.uid in get(/databases/$(database)/documents/artifacts/oath-app/users/$(userId)).data.blockedUsers;
     }
 
     // Helper function to check if two users are friends (bidirectional check)
     function areFriends(userId1, userId2) {
+      let user1 = get(/databases/$(database)/documents/artifacts/oath-app/users/$(userId1)).data;
       return isAuthenticated() && 
-             userId2 in get(/databases/$(database)/documents/artifacts/oath-app/users/$(userId1)).data.friends;
+             userId2 in user1.friends &&
+             !(userId2 in user1.blockedUsers);
     }
 
     // Helper to determine ownership from document ID prefix (e.g., userId_goalId)
@@ -28,12 +37,11 @@ service cloud.firestore {
       return isAuthenticated() && docId.matches('^' + request.auth.uid + '(_.*)?$');
     }
 
-    // User documents - allow read for search functionality, write only for own document
+    // User documents - allow read only if not blocked
     match /artifacts/oath-app/users/{userId} {
-      // Allow read only for own profile or friends (Requirements 7.1)
       allow read: if isAuthenticated() && (
         request.auth.uid == userId || 
-        isFriend(userId)
+        (isFriend(userId) && !isBlockedBy(userId))
       );
       // Allow write only for own document (Requirements 7.1)
       allow write: if isOwner(userId);
@@ -61,10 +69,12 @@ service cloud.firestore {
     // Goal documents - read access for owner or friends, write access for owner only
     match /artifacts/oath-app/public/data/goals/{goalId} {
       // Allow read if user is owner or user is in owner's friends list (Requirements 10.1, 10.3)
+      // And user is not blocked
       allow read: if isAuthenticated() && (
         resource.data.ownerId == request.auth.uid ||
         (resource.data.ownerId != null && 
-         isFriend(resource.data.ownerId))
+         isFriend(resource.data.ownerId) &&
+         !isBlockedBy(resource.data.ownerId))
       );
       
       // Allow update only if user is the owner AND not modifying sensitive fields (Requirements 7.3)

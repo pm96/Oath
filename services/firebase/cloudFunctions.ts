@@ -138,6 +138,42 @@ export async function deleteHabit(payload: { habitId: string }): Promise<{ succe
 }
 
 /**
+ * Update habit details via Cloud Function
+ */
+export async function updateHabit(payload: { habitId: string; updates: any }): Promise<{ success: boolean }> {
+    try {
+        const callable = httpsCallable<
+            { habitId: string; updates: any },
+            { success: boolean }
+        >(functions, "updateHabit");
+
+        const result = await callable(payload);
+        return result.data;
+    } catch (error: any) {
+        console.error("Error updating habit:", error);
+        throw new Error(error.message || "Failed to update habit.");
+    }
+}
+
+/**
+ * Repair a broken streak via Cloud Function (Pro feature)
+ */
+export async function repairHabitStreak(payload: { habitId: string; missedDate: string }): Promise<{ success: boolean; newStreak: number }> {
+    try {
+        const callable = httpsCallable<
+            { habitId: string; missedDate: string },
+            { success: boolean; newStreak: number }
+        >(functions, "repairHabitStreak");
+
+        const result = await callable(payload);
+        return result.data;
+    } catch (error: any) {
+        console.error("Error repairing streak:", error);
+        throw new Error(error.message || "Failed to repair streak.");
+    }
+}
+
+/**
  * Register FCM token for push notifications
  * This should be called when the user logs in or when the FCM token is refreshed
  *

@@ -42,6 +42,8 @@ export type { LoadingSkeletonProps } from "./LoadingSkeleton";
 export { NotificationCard } from "./NotificationCard";
 export type { NotificationCardProps } from "./NotificationCard";
 
+export { PaywallModal } from "./PaywallModal";
+export type { PaywallModalProps } from "./PaywallModal";
 export { NotificationBadge } from "./NotificationBadge";
 export type { NotificationBadgeProps } from "./NotificationBadge";
 

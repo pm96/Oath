@@ -1,5 +1,7 @@
 export { HabitCreationModal } from "./HabitCreationModal";
 export type { HabitInput } from "./HabitCreationModal";
+export { EditHabitModal } from "./EditHabitModal";
+export type { EditHabitModalProps } from "./EditHabitModal";
 
 export { MilestoneBadge } from "./MilestoneBadge";
 export { MilestoneBadges } from "./MilestoneBadges";

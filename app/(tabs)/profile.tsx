@@ -9,6 +9,7 @@ import {
     Heading,
     HStack,
     LoadingSkeleton,
+    PaywallModal,
     VStack,
 } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,7 +18,7 @@ import { User } from "@/services/firebase/collections";
 import { subscribeToUserData, updateUserNotificationSettings } from "@/services/firebase/socialService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { router } from "expo-router";
-import { Bell, LogOut, Moon, Settings, Shield } from "lucide-react-native";
+import { Bell, LogOut, Moon, Settings, Shield, Trophy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { RefreshControl, ScrollView, Switch, View, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "@/components/ui/safe-area-view";
@@ -34,6 +35,7 @@ export default function Profile() {
     const [signingOut, setSigningOut] = useState(false);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
     // Subscribe to user data and set initial notification preference
@@ -127,19 +129,24 @@ export default function Profile() {
                         <Body color="muted">
                             {userData?.email || user?.email || "demo@example.com"}
                         </Body>
-                        <Caption
-                            color="success"
-                            style={{
-                                marginTop: spacing.xs,
-                                backgroundColor: colors.success + "20",
-                                paddingHorizontal: spacing.sm,
-                                paddingVertical: spacing.xs / 2,
-                                borderRadius: 12,
-                                alignSelf: "flex-start",
-                            }}
-                        >
-                            Free Plan
-                        </Caption>
+                        <HStack spacing="xs" style={{ marginTop: spacing.xs }}>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onPress={() => setShowPaywall(true)}
+                                style={{
+                                    height: 32,
+                                    minHeight: 32,
+                                    borderColor: colors.primary,
+                                    borderRadius: 16,
+                                }}
+                            >
+                                <HStack spacing="xs" align="center">
+                                    <Trophy size={14} color={colors.primary} />
+                                    <Body size="xs" style={{ color: colors.primary }}>Upgrade to Pro</Body>
+                                </HStack>
+                            </Button>
+                        </HStack>
                     </View>
                 </HStack>
             </Card>
@@ -335,6 +342,15 @@ export default function Profile() {
                     )}
                 </ScrollView>
             </Container>
+
+            <PaywallModal
+                visible={showPaywall}
+                onClose={() => setShowPaywall(false)}
+                onUpgrade={() => {
+                    setShowPaywall(false);
+                    showSuccessToast("Upgrade initiated!");
+                }}
+            />
         </SafeAreaView>
     );
 }

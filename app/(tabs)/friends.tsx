@@ -1,5 +1,6 @@
 import { FriendList } from "@/components/friends/FriendList";
 import { FriendRequests } from "@/components/friends/FriendRequests";
+import { Leaderboard } from "@/components/friends/Leaderboard";
 import { UserSearch } from "@/components/friends/UserSearch";
 import { FriendsFeed } from "@/components/social/FriendsFeed";
 import {
@@ -27,7 +28,8 @@ import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Copy, Share2 } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import { Clipboard, Platform, ScrollView, Share, View } from "react-native";
-type TabType = "network" | "feed" | "add";
+
+type TabType = "network" | "feed" | "add" | "board";
 
 /**
  * Enhanced Friends screen with feed integration and tab switching
@@ -160,6 +162,18 @@ export default function FriendsScreen() {
 
     const renderTabContent = () => {
         switch (activeTab) {
+            case "board":
+                return (
+                    <VStack spacing="xl" style={{ paddingBottom: spacing.xl }}>
+                        <VStack spacing="md">
+                            <Heading size="md">Accountability Board</Heading>
+                            <Caption color="muted">
+                                Lowest shame scores among your friends
+                            </Caption>
+                            <Leaderboard userId={user?.uid} type="shame" />
+                        </VStack>
+                    </VStack>
+                );
             case "network":
                 return (
                     <VStack spacing="xl" style={{ paddingBottom: spacing.xl }}>
@@ -321,6 +335,7 @@ export default function FriendsScreen() {
                         >
                             <HStack spacing="xs" style={{ flex: 1 }}>
                                 {renderTabButton("feed", "Feed")}
+                                {renderTabButton("board", "Board")}
                                 {renderTabButton("network", "People")}
                                 {renderTabButton("add", "Add")}
                             </HStack>

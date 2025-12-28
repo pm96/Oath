@@ -11,6 +11,7 @@ import {
     Heading,
     LoadingSkeleton,
     NotificationBadge,
+    PaywallModal,
     Progress,
     VStack,
 } from "@/components/ui";
@@ -54,12 +55,23 @@ export default function Home() {
     } = useGoals();
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
     const [notificationCount, setNotificationCount] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
     const { colors, spacing } = useThemeStyles();
     const { triggerCelebration } = useCelebration();
 
     const openSwipeableRowRef = useRef<Swipeable | null>(null);
+
+    const handleOpenCreate = () => {
+        // Simulated 'Pro' check.
+        const isPro = false; 
+        if (goals.length >= 3 && !isPro) {
+            setShowPaywall(true);
+        } else {
+            setShowCreateForm(true);
+        }
+    };
 
     // Subscribe to unread notifications (recent nudges)
     useEffect(() => {
@@ -462,7 +474,7 @@ export default function Home() {
                                     <Button
                                         variant="primary"
                                         size="lg"
-                                        onPress={() => setShowCreateForm(true)}
+                                        onPress={handleOpenCreate}
                                         style={{
                                             width: 64,
                                             height: 64,
@@ -560,7 +572,7 @@ export default function Home() {
                                     </Body>
                                     <Button
                                         variant="primary"
-                                        onPress={() => setShowCreateForm(true)}
+                                        onPress={handleOpenCreate}
                                     >
                                         Create Your First Habit
                                     </Button>
@@ -583,6 +595,15 @@ export default function Home() {
             <NotificationInbox
                 visible={showNotifications}
                 onClose={() => setShowNotifications(false)}
+            />
+
+            <PaywallModal
+                visible={showPaywall}
+                onClose={() => setShowPaywall(false)}
+                onUpgrade={() => {
+                    setShowPaywall(false);
+                    showSuccessToast("Welcome to Pro! (Simulation)");
+                }}
             />
         </SafeAreaView>
     );
