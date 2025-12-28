@@ -8,10 +8,17 @@ import {
     serverTimestamp,
     where,
     doc,
+    getDocs,
+    orderBy,
+    limit,
+    startAt,
+    endAt,
 } from "firebase/firestore";
 import { app, db } from "../../firebaseConfig";
 import { getUserFriendlyErrorMessage } from "@/utils/errorHandling";
-import { getUserDoc } from "./collections";
+import { getUserDoc, getUsersCollection } from "./collections";
+import { UserSearchResult } from "@/services/firebase/collections";
+
 
 const functions = getFunctions(app);
 
@@ -45,6 +52,81 @@ export async function findUserByInviteCode(inviteCode: string): Promise<PublicUs
         }
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(message);
+    }
+}
+
+/**
+ * Searches for users by email or display name.
+ * @param searchQuery The query string.
+ * @param currentUserId The ID of the current user, to exclude them from results.
+ * @returns A list of matching users with their relationship status to the current user.
+ */
+export async function searchUsers(searchQuery: string, currentUserId: string): Promise<UserSearchResult[]> {
+    if (!searchQuery || searchQuery.trim().length === 0) {
+        return [];
+    }
+
+    const lowerCaseQuery = searchQuery.toLowerCase().trim();
+    const usersCollection = getUsersCollection();
+    const results: UserSearchResult[] = [];
+
+    // Simulate different search queries for email and name
+    const emailQuery = query(
+        usersCollection,
+        where("searchableEmail", ">=", lowerCaseQuery),
+        where("searchableEmail", "<=", lowerCaseQuery + "\uf8ff"),
+        limit(5) // Limit results to avoid excessive reads
+    );
+
+    const nameQuery = query(
+        usersCollection,
+        where("searchableName", ">=", lowerCaseQuery),
+        where("searchableName", "<=", lowerCaseQuery + "\uf8ff"),
+        limit(5) // Limit results to avoid excessive reads
+    );
+
+    try {
+        const [emailSnapshot, nameSnapshot] = await Promise.all([
+            getDocs(emailQuery),
+            getDocs(nameQuery)
+        ]);
+
+        const uniqueUserIds = new Set<string>();
+
+        // Process email results
+        emailSnapshot.forEach(doc => {
+            if (doc.id !== currentUserId && !uniqueUserIds.has(doc.id)) {
+                const data = doc.data();
+                results.push({
+                    userId: doc.id,
+                    displayName: data.displayName,
+                    email: data.email,
+                    relationshipStatus: "none" // Default status
+                });
+                uniqueUserIds.add(doc.id);
+            }
+        });
+
+        // Process name results
+        nameSnapshot.forEach(doc => {
+            if (doc.id !== currentUserId && !uniqueUserIds.has(doc.id)) {
+                const data = doc.data();
+                results.push({
+                    userId: doc.id,
+                    displayName: data.displayName,
+                    email: data.email,
+                    relationshipStatus: "none" // Default status
+                });
+                uniqueUserIds.add(doc.id);
+            }
+        });
+
+        // Further optimization: fetch friend status from useFriendshipStatus hook
+        // For simplicity, we'll return "none" here and let the client handle status update
+        return results;
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to search users: ${message}`);
     }
 }
 

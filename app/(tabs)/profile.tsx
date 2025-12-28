@@ -14,11 +14,11 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme, useThemeStyles } from "@/hooks/useTheme";
 import { User } from "@/services/firebase/collections";
-import { subscribeToUserData } from "@/services/firebase/socialService";
+import { subscribeToUserData, updateUserNotificationSettings } from "@/services/firebase/socialService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Bell, LogOut, Moon, Settings, Shield } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { RefreshControl, ScrollView, Switch, View } from "react-native";
+import { RefreshControl, ScrollView, Switch, View, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "@/components/ui/safe-area-view";
 
 /**
@@ -35,7 +35,7 @@ export default function Profile() {
     const [refreshing, setRefreshing] = useState(false);
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-    // Subscribe to user data
+    // Subscribe to user data and set initial notification preference
     useEffect(() => {
         if (!user?.uid) {
             setLoading(false);
@@ -45,7 +45,11 @@ export default function Profile() {
         const unsubscribe = subscribeToUserData(
             user.uid,
             (data) => {
-                setUserData(data);
+                if (data) {
+                    setUserData(data);
+                    // Set initial state from Firestore, default to true if not set
+                    setNotificationsEnabled(data.notificationSettings?.enabled ?? true);
+                }
                 setLoading(false);
             },
             (error) => {
@@ -72,18 +76,31 @@ export default function Profile() {
     const handleRefresh = async () => {
         setRefreshing(true);
         try {
-            // Refresh user data
+            // This is a simplified refresh, a real implementation might re-fetch data
             await new Promise((resolve) => setTimeout(resolve, 1000));
         } finally {
             setRefreshing(false);
         }
     };
 
-    const handleToggleNotifications = () => {
-        setNotificationsEnabled(!notificationsEnabled);
+    const handleToggleNotifications = async () => {
+        if (!user?.uid) return;
+
+        const newValue = !notificationsEnabled;
+        // Optimistically update the UI
+        setNotificationsEnabled(newValue);
         showSuccessToast(
-            notificationsEnabled ? "Notifications disabled" : "Notifications enabled",
+            newValue ? "Notifications enabled" : "Notifications disabled",
         );
+
+        try {
+            await updateUserNotificationSettings(user.uid, { enabled: newValue });
+        } catch (error) {
+            // Revert UI on error
+            setNotificationsEnabled(!newValue);
+            showErrorToast("Failed to update notification settings.");
+            console.error("Failed to update settings:", error);
+        }
     };
 
     const handleThemeToggle = () => {
@@ -194,20 +211,24 @@ export default function Profile() {
                 <Card variant="default" padding="md">
                     <VStack spacing="md">
                         {/* Privacy */}
-                        <HStack align="center" justify="space-between">
-                            <HStack align="center" spacing="md">
-                                <Shield size={20} color={colors.foreground} />
-                                <Body>Privacy</Body>
+                        <TouchableOpacity onPress={() => showSuccessToast("Feature coming soon!", "Heads up")}>
+                            <HStack align="center" justify="space-between">
+                                <HStack align="center" spacing="md">
+                                    <Shield size={20} color={colors.foreground} />
+                                    <Body>Privacy</Body>
+                                </HStack>
                             </HStack>
-                        </HStack>
+                        </TouchableOpacity>
 
                         {/* Account Settings */}
-                        <HStack align="center" justify="space-between">
-                            <HStack align="center" spacing="md">
-                                <Settings size={20} color={colors.foreground} />
-                                <Body>Account Settings</Body>
+                        <TouchableOpacity onPress={() => showSuccessToast("Feature coming soon!", "Heads up")}>
+                            <HStack align="center" justify="space-between">
+                                <HStack align="center" spacing="md">
+                                    <Settings size={20} color={colors.foreground} />
+                                    <Body>Account Settings</Body>
+                                </HStack>
                             </HStack>
-                        </HStack>
+                        </TouchableOpacity>
                     </VStack>
                 </Card>
             </VStack>

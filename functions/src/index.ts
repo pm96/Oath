@@ -1080,6 +1080,13 @@ export const sendNudge = onCall(async (request) => {
         }
 
         const targetData = targetDoc.data();
+        if (targetData?.notificationSettings?.enabled === false) {
+            console.log(`Target user ${targetUserId} has disabled notifications.`);
+            return {
+                success: false,
+                message: "User has disabled notifications.",
+            };
+        }
         const targetFriends = targetData?.friends || [];
         const fcmToken = targetData?.fcmToken;
 
@@ -1177,6 +1184,11 @@ export const sendFriendRequestNotification = onDocumentCreated(
             }
 
             const receiverData = receiverDoc.data();
+            if (receiverData?.notificationSettings?.enabled === false) {
+                console.log(`User ${receiverId} has disabled notifications.`);
+                return;
+            }
+            
             const fcmToken = receiverData?.fcmToken;
 
             if (!fcmToken) {
@@ -1249,6 +1261,11 @@ export const sendFriendRequestAcceptedNotification = onDocumentUpdated(
             }
 
             const senderData = senderDoc.data();
+            if (senderData?.notificationSettings?.enabled === false) {
+                console.log(`User ${senderId} has disabled notifications.`);
+                return;
+            }
+
             const fcmToken = senderData?.fcmToken;
 
             if (!fcmToken) {
@@ -1473,82 +1490,54 @@ export const sendStreakRiskReminders = onSchedule(
                     if (!userDoc.exists) continue;
 
                     const userData = userDoc.data();
+                    if (userData?.notificationSettings?.enabled === false) {
+                        continue;
+                    }
                     const fcmToken = userData?.fcmToken;
 
                     if (!fcmToken) continue;
 
-                    // Get notification preferences
-                    const settingsRef = db.doc(
-                        `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
+                    // Check if user has completed habit today
+                    const today = now.toISOString().split("T")[0];
+                    const completionsRef = db.collection(
+                        `artifacts/${APP_ID}/completions`,
                     );
-                    const settingsDoc = await settingsRef.get();
+                    const todayCompletionsQuery = completionsRef
+                        .where("habitId", "==", streakData.habitId)
+                        .where("userId", "==", userId);
 
-                    let reminderTime = 2; // Default 2 hours before day end
-                    let remindersEnabled = true;
+                    const completionsSnapshot = await todayCompletionsQuery.get();
 
-                    if (settingsDoc.exists) {
-                        const settings =
-                            (settingsDoc.data() as {
-                                preferences?: {
-                                    reminderTime?: number;
-                                    streakReminders?: boolean;
-                                };
-                            }) || {};
-                        reminderTime = settings.preferences?.reminderTime ?? 2;
-                        remindersEnabled =
-                            settings.preferences?.streakReminders !== false;
+                    let hasCompletedToday = false;
+                    for (const completionDoc of completionsSnapshot.docs) {
+                        const completionData = completionDoc.data();
+                        const completionDate = completionData.completedAt
+                            .toDate()
+                            .toISOString()
+                            .split("T")[0];
+                        if (completionDate === today) {
+                            hasCompletedToday = true;
+                            break;
+                        }
                     }
 
-                    if (!remindersEnabled) continue;
-
-                    // Calculate reminder time (assuming day ends at 11 PM = 23:00 UTC)
-                    const dayEndHour = 23;
-                    const reminderHour = dayEndHour - reminderTime;
-
-                    // Check if it's time to send reminder (within 1 hour window)
-                    if (currentHour === reminderHour) {
-                        // Check if user has completed habit today
-                        const today = now.toISOString().split("T")[0];
-                        const completionsRef = db.collection(
-                            `artifacts/${APP_ID}/completions`,
+                    if (!hasCompletedToday) {
+                        // Get habit name
+                        const goalRef = db.doc(
+                            `artifacts/${APP_ID}/public/data/goals/${streakData.habitId}`,
                         );
-                        const todayCompletionsQuery = completionsRef
-                            .where("habitId", "==", streakData.habitId)
-                            .where("userId", "==", userId);
+                        const goalDoc = await goalRef.get();
+                        const habitName = goalDoc.exists
+                            ? goalDoc.data()?.description || "Your habit"
+                            : "Your habit";
 
-                        const completionsSnapshot = await todayCompletionsQuery.get();
-
-                        let hasCompletedToday = false;
-                        for (const completionDoc of completionsSnapshot.docs) {
-                            const completionData = completionDoc.data();
-                            const completionDate = completionData.completedAt
-                                .toDate()
-                                .toISOString()
-                                .split("T")[0];
-                            if (completionDate === today) {
-                                hasCompletedToday = true;
-                                break;
-                            }
-                        }
-
-                        if (!hasCompletedToday) {
-                            // Get habit name
-                            const goalRef = db.doc(
-                                `artifacts/${APP_ID}/public/data/goals/${streakData.habitId}`,
-                            );
-                            const goalDoc = await goalRef.get();
-                            const habitName = goalDoc.exists
-                                ? goalDoc.data()?.description || "Your habit"
-                                : "Your habit";
-
-                            remindersToSend.push({
-                                userId,
-                                habitId: streakData.habitId,
-                                habitName,
-                                currentStreak: streakData.currentStreak,
-                                fcmToken,
-                            });
-                        }
+                        remindersToSend.push({
+                            userId,
+                            habitId: streakData.habitId,
+                            habitName,
+                            currentStreak: streakData.currentStreak,
+                            fcmToken,
+                        });
                     }
                 }
             }
@@ -1657,27 +1646,12 @@ export const sendWeeklyProgressNotifications = onSchedule(
                     if (!userDoc.exists) continue;
 
                     const userData = userDoc.data();
+                     if (userData?.notificationSettings?.enabled === false) {
+                        continue;
+                    }
                     const fcmToken = userData?.fcmToken;
 
                     if (!fcmToken) continue;
-
-                    // Check notification preferences
-                    const settingsRef = db.doc(
-                        `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
-                    );
-                    const settingsDoc = await settingsRef.get();
-
-                    let weeklyProgressEnabled = true;
-                    if (settingsDoc.exists) {
-                        const settings =
-                            (settingsDoc.data() as {
-                                preferences?: { weeklyProgress?: boolean };
-                            }) || {};
-                        weeklyProgressEnabled =
-                            settings.preferences?.weeklyProgress !== false;
-                    }
-
-                    if (!weeklyProgressEnabled) continue;
 
                     // Count completions in the last week
                     const completionsRef = db.collection(
@@ -1817,31 +1791,14 @@ export const sendMilestoneNotification = onDocumentCreated(
             }
 
             const userData = userDoc.data();
+            if (userData?.notificationSettings?.enabled === false) {
+                console.log(`User ${userId} has disabled notifications.`);
+                return;
+            }
             const fcmToken = userData?.fcmToken;
 
             if (!fcmToken) {
                 console.log(`User ${userId} has no FCM token`);
-                return;
-            }
-
-            // Check notification preferences
-            const settingsRef = db.doc(
-                `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
-            );
-            const settingsDoc = await settingsRef.get();
-
-            let milestonesEnabled = true;
-            if (settingsDoc.exists) {
-                const settings =
-                    (settingsDoc.data() as {
-                        preferences?: { milestoneNotifications?: boolean };
-                    }) || {};
-                milestonesEnabled =
-                    settings.preferences?.milestoneNotifications !== false;
-            }
-
-            if (!milestonesEnabled) {
-                console.log(`User ${userId} has milestone notifications disabled`);
                 return;
             }
 
@@ -2014,35 +1971,16 @@ export const sendPendingRecoveryNotifications = onSchedule(
                     }
 
                     const userData = userDoc.data();
+                    if (userData?.notificationSettings?.enabled === false) {
+                        console.log(`User ${userId} has recovery notifications disabled, marking as sent`);
+                        batch.update(doc.ref, { sent: true });
+                        continue;
+                    }
                     const fcmToken = userData?.fcmToken;
 
                     if (!fcmToken) {
                         console.log(
                             `User ${userId} has no FCM token, marking notification as sent`,
-                        );
-                        batch.update(doc.ref, { sent: true });
-                        continue;
-                    }
-
-                    // Check notification preferences
-                    const settingsRef = db.doc(
-                        `artifacts/${APP_ID}/users/${userId}/settings/notifications`,
-                    );
-                    const settingsDoc = await settingsRef.get();
-
-                    let recoveryEnabled = true;
-                    if (settingsDoc.exists) {
-                        const settings =
-                            (settingsDoc.data() as {
-                                preferences?: { recoveryNotifications?: boolean };
-                            }) || {};
-                        recoveryEnabled =
-                            settings.preferences?.recoveryNotifications !== false;
-                    }
-
-                    if (!recoveryEnabled) {
-                        console.log(
-                            `User ${userId} has recovery notifications disabled, marking as sent`,
                         );
                         batch.update(doc.ref, { sent: true });
                         continue;

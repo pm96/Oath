@@ -427,3 +427,28 @@ export function subscribeToUserData(
 
     return unsubscribe;
 }
+
+/**
+ * Update user's notification settings in Firestore.
+ * @param userId The ID of the user to update.
+ * @param settings An object containing the settings to update.
+ */
+export async function updateUserNotificationSettings(
+    userId: string,
+    settings: { [key: string]: any },
+): Promise<void> {
+    if (!userId) {
+        throw new Error("User ID is required to update settings.");
+    }
+
+    try {
+        const userDocRef = getUserDoc(userId);
+        // Use set with merge:true to create or update the settings map
+        await updateDoc(userDocRef, {
+            notificationSettings: settings,
+        });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to update settings: ${message}`);
+    }
+}
