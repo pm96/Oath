@@ -42,7 +42,6 @@ app-example
 /ios
 /android
 
-firebase.json
-firebaseConfig.json
+firebaseConfig.js
 google-services.json
-GoogleService-info.plist
+GoogleService-Info.plist
