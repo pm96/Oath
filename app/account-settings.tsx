@@ -1,12 +1,14 @@
 import {
+    Body,
+    Button,
+    Caption,
     Container,
     Heading,
-    VStack,
-    Button,
+    HStack,
     Input,
-    Body,
-    Caption,
+    VStack,
 } from "@/components/ui";
+import { SafeAreaView } from "@/components/ui/safe-area-view";
 import { useAuth } from "@/hooks/useAuth";
 import { useThemeStyles } from "@/hooks/useTheme";
 import { deleteAccount } from "@/services/firebase/authService";
@@ -14,9 +16,8 @@ import { updateUserProfile } from "@/services/firebase/socialService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import React, { useState, useEffect } from "react";
-import { View, Alert } from "react-native";
-import { SafeAreaView } from "@/components/ui/safe-area-view";
+import React, { useEffect, useState } from "react";
+import { Alert, View } from "react-native";
 
 export default function AccountSettingsScreen() {
     const { colors, spacing } = useThemeStyles();
@@ -73,14 +74,14 @@ export default function AccountSettingsScreen() {
                         }
                     },
                 },
-            ]
+            ],
         );
     };
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
             {/* Header */}
-            <VStack
+            <HStack
                 style={{
                     paddingHorizontal: spacing.lg,
                     paddingVertical: spacing.md,
@@ -88,22 +89,22 @@ export default function AccountSettingsScreen() {
                     borderBottomColor: colors.border,
                 }}
                 align="center"
-                spacing="md"
+                justify="space-between"
             >
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onPress={() => router.back()}
-                    style={{ alignSelf: "flex-start", position: "absolute", left: spacing.md, top: spacing.sm }}
-                >
+                <Button variant="ghost" size="sm" onPress={() => router.back()}>
                     <ArrowLeft size={20} color={colors.foreground} />
                 </Button>
                 <Heading size="lg" style={{ flex: 1, textAlign: "center" }}>
                     Account Settings
                 </Heading>
-            </VStack>
+                <View style={{ width: 20 }} />
+                {/* Placeholder for spacing */}
+            </HStack>
 
-            <Container padding="lg" style={{ flex: 1, justifyContent: 'space-between' }}>
+            <Container
+                padding="lg"
+                style={{ flex: 1, justifyContent: "space-between" }}
+            >
                 <VStack spacing="xl">
                     <VStack spacing="sm">
                         <Body weight="medium">Display Name</Body>
@@ -113,18 +114,31 @@ export default function AccountSettingsScreen() {
                             onChangeText={setDisplayName}
                         />
                     </VStack>
-                    <Button onPress={handleSave} loading={loading} disabled={loading || deleting || displayName === (user?.displayName || "")}>
+                    <Button
+                        onPress={handleSave}
+                        loading={loading}
+                        disabled={
+                            loading || deleting || displayName === (user?.displayName || "")
+                        }
+                    >
                         Save Changes
                     </Button>
 
-                    <Button variant="outline" onPress={() => router.push('/change-password')}>
+                    <Button
+                        variant="outline"
+                        onPress={() => router.push("/change-password")}
+                    >
                         Change Password
                     </Button>
                 </VStack>
 
                 <VStack spacing="md" style={{ marginTop: spacing.xl }}>
-                    <Heading size="lg" color="destructive">Danger Zone</Heading>
-                    <Caption color="muted">These actions are permanent and cannot be undone.</Caption>
+                    <Heading size="lg" color="destructive">
+                        Danger Zone
+                    </Heading>
+                    <Caption color="muted">
+                        These actions are permanent and cannot be undone.
+                    </Caption>
                     <Button
                         variant="destructive"
                         onPress={handleDeleteAccount}
