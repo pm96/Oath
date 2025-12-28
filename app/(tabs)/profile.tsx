@@ -239,18 +239,17 @@ export default function Profile() {
     const renderSignOutButton = () => (
         <AnimatedView animation="slideInFromBottom" delay={400}>
             <Button
-                variant="primary"
+                variant="destructive"
                 onPress={handleSignOut}
                 disabled={signingOut}
                 loading={signingOut}
                 style={{
-                    backgroundColor: colors.destructive,
                     marginTop: spacing.lg,
                 }}
             >
                 <HStack align="center" spacing="sm">
-                    <LogOut size={20} color={colors.primaryForeground} />
-                    <Body color="primary" weight="semibold">
+                    <LogOut size={20} color={colors.destructiveForeground} />
+                    <Body style={{ color: colors.destructiveForeground }} weight="semibold">
                         {signingOut ? "Signing Out..." : "Log Out"}
                     </Body>
                 </HStack>

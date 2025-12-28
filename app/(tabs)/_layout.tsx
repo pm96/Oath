@@ -55,9 +55,8 @@ export default function TabLayout() {
           backgroundColor: theme.colors.card,
           borderTopColor: theme.colors.border,
           borderTopWidth: 1,
-          paddingBottom: Platform.OS === "ios" ? 20 : 8,
           paddingTop: 8,
-          height: Platform.OS === "ios" ? 88 : 64,
+          // Remove hardcoded height and excessive padding to let navigation handle safe area
           ...(Platform.OS === "android" && { elevation: 8 }), // Android shadow
           ...(Platform.OS === "ios" && {
             shadowColor: theme.colors.foreground, // iOS shadow

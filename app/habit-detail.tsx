@@ -128,12 +128,11 @@ export default function HabitDetailScreen() {
             {!isDashboardLoading && !dashboardError && (
                 <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
                     <Button
-                        variant="outline"
+                        variant="destructive"
                         onPress={handleDelete}
-                        style={{ borderColor: colors.destructive, backgroundColor: colors.background }}
                     >
-                        <Trash2 size={16} color={colors.destructive} style={{ marginRight: spacing.sm }} />
-                        <Heading size="sm" style={{ color: colors.destructive }}>Delete Habit</Heading>
+                        <Trash2 size={18} color={colors.destructiveForeground} style={{ marginRight: spacing.sm }} />
+                        Delete Habit
                     </Button>
                 </View>
             )}

@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, View, ViewStyle } from "react-native";
+import { useThemeStyles } from "../../hooks/useTheme";
 import { HabitAnalytics, TrendData } from "../../types/habit-streaks";
 import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
@@ -22,12 +23,13 @@ export const TrendAnalysisDisplay: React.FC<TrendAnalysisDisplayProps> = ({
     analytics,
     style,
 }) => {
-    const trendAnalysis = analyzeTrends(trends);
+    const { colors, spacing, typography } = useThemeStyles();
+    const trendAnalysis = analyzeTrends(trends, colors);
     const performanceInsights = generatePerformanceInsights(trends, analytics);
 
     return (
         <Card style={StyleSheet.flatten([styles.container, style])}>
-            <Text style={styles.title}>Trend Analysis</Text>
+            <Text style={styles.title} color="foreground">Trend Analysis</Text>
 
             {/* Overall Trend Direction */}
             <View style={styles.trendSection}>
@@ -37,21 +39,18 @@ export const TrendAnalysisDisplay: React.FC<TrendAnalysisDisplayProps> = ({
                     </Text>
                     <View style={styles.trendInfo}>
                         <Text
-                            style={StyleSheet.flatten([
-                                styles.trendDirection,
-                                { color: getTrendColor(trendAnalysis.direction) },
-                            ])}
+                            style={{ color: trendAnalysis.color, fontSize: 16, fontWeight: '600', marginBottom: 4 }}
                         >
                             {getTrendLabel(trendAnalysis.direction)}
                         </Text>
-                        <Text style={styles.trendDescription}>
+                        <Text style={styles.trendDescription} color="muted">
                             {trendAnalysis.description}
                         </Text>
                     </View>
                 </View>
 
                 {trendAnalysis.changePercent !== 0 && (
-                    <Text style={styles.trendChange}>
+                    <Text style={styles.trendChange} color="muted">
                         {trendAnalysis.changePercent > 0 ? "+" : ""}
                         {trendAnalysis.changePercent.toFixed(1)}% change
                     </Text>
@@ -60,45 +59,45 @@ export const TrendAnalysisDisplay: React.FC<TrendAnalysisDisplayProps> = ({
 
             {/* Performance Metrics */}
             <View style={styles.metricsSection}>
-                <Text style={styles.sectionTitle}>Performance Metrics</Text>
+                <Text style={styles.sectionTitle} color="foreground">Performance Metrics</Text>
                 <View style={styles.metricsGrid}>
-                    <View style={styles.metricItem}>
-                        <Text style={styles.metricValue}>
+                    <View style={[styles.metricItem, { backgroundColor: colors.muted + '10' }]}>
+                        <Text style={styles.metricValue} color="primary">
                             {trendAnalysis.averageRate.toFixed(1)}%
                         </Text>
-                        <Text style={styles.metricLabel}>Average Rate</Text>
+                        <Text style={styles.metricLabel} color="muted">Average Rate</Text>
                     </View>
-                    <View style={styles.metricItem}>
-                        <Text style={styles.metricValue}>
+                    <View style={[styles.metricItem, { backgroundColor: colors.muted + '10' }]}>
+                        <Text style={styles.metricValue} color="primary">
                             {trendAnalysis.bestPeriod?.completionRate.toFixed(1) || "0"}%
                         </Text>
-                        <Text style={styles.metricLabel}>Best Period</Text>
+                        <Text style={styles.metricLabel} color="muted">Best Period</Text>
                     </View>
-                    <View style={styles.metricItem}>
-                        <Text style={styles.metricValue}>
+                    <View style={[styles.metricItem, { backgroundColor: colors.muted + '10' }]}>
+                        <Text style={styles.metricValue} color="primary">
                             {trendAnalysis.volatility.toFixed(1)}
                         </Text>
-                        <Text style={styles.metricLabel}>Volatility</Text>
+                        <Text style={styles.metricLabel} color="muted">Volatility</Text>
                     </View>
-                    <View style={styles.metricItem}>
-                        <Text style={styles.metricValue}>
+                    <View style={[styles.metricItem, { backgroundColor: colors.muted + '10' }]}>
+                        <Text style={styles.metricValue} color="primary">
                             {trendAnalysis.consistency.toFixed(1)}%
                         </Text>
-                        <Text style={styles.metricLabel}>Stability</Text>
+                        <Text style={styles.metricLabel} color="muted">Stability</Text>
                     </View>
                 </View>
             </View>
 
             {/* Performance Insights */}
             <View style={styles.insightsSection}>
-                <Text style={styles.sectionTitle}>Performance Insights</Text>
+                <Text style={styles.sectionTitle} color="foreground">Performance Insights</Text>
                 <View style={styles.insightsList}>
                     {performanceInsights.map((insight, index) => (
-                        <View key={index} style={styles.insightItem}>
+                        <View key={index} style={[styles.insightItem, { backgroundColor: colors.muted + '10' }]}>
                             <Text style={styles.insightIcon}>{insight.icon}</Text>
                             <View style={styles.insightContent}>
-                                <Text style={styles.insightTitle}>{insight.title}</Text>
-                                <Text style={styles.insightText}>{insight.message}</Text>
+                                <Text style={styles.insightTitle} color="foreground">{insight.title}</Text>
+                                <Text style={styles.insightText} color="muted">{insight.message}</Text>
                             </View>
                         </View>
                     ))}
@@ -107,13 +106,13 @@ export const TrendAnalysisDisplay: React.FC<TrendAnalysisDisplayProps> = ({
 
             {/* Recommendations */}
             {trendAnalysis.recommendations.length > 0 && (
-                <View style={styles.recommendationsSection}>
-                    <Text style={styles.sectionTitle}>Recommendations</Text>
+                <View style={[styles.recommendationsSection, { borderTopColor: colors.border }]}>
+                    <Text style={styles.sectionTitle} color="foreground">Recommendations</Text>
                     <View style={styles.recommendationsList}>
                         {trendAnalysis.recommendations.map((recommendation, index) => (
                             <View key={index} style={styles.recommendationItem}>
-                                <Text style={styles.recommendationBullet}>•</Text>
-                                <Text style={styles.recommendationText}>{recommendation}</Text>
+                                <Text style={styles.recommendationBullet} color="primary">•</Text>
+                                <Text style={styles.recommendationText} color="muted">{recommendation}</Text>
                             </View>
                         ))}
                     </View>
@@ -126,7 +125,7 @@ export const TrendAnalysisDisplay: React.FC<TrendAnalysisDisplayProps> = ({
 /**
  * Analyze trends to extract insights and patterns
  */
-const analyzeTrends = (trends: TrendData[]) => {
+const analyzeTrends = (trends: TrendData[], colors: any) => {
     if (trends.length === 0) {
         return {
             direction: "stable" as const,
@@ -137,6 +136,7 @@ const analyzeTrends = (trends: TrendData[]) => {
             volatility: 0,
             consistency: 0,
             recommendations: [],
+            color: colors.primary,
         };
     }
 
@@ -156,17 +156,21 @@ const analyzeTrends = (trends: TrendData[]) => {
 
     let direction: "improving" | "declining" | "stable";
     let description: string;
+    let color: string;
 
     if (changePercent > 5) {
         direction = "improving";
         description = "Your completion rate is trending upward. Great progress!";
+        color = colors.success;
     } else if (changePercent < -5) {
         direction = "declining";
         description =
             "Your completion rate is trending downward. Consider adjusting your approach.";
+        color = colors.destructive;
     } else {
         direction = "stable";
         description = "Your completion rate is relatively stable.";
+        color = colors.primary;
     }
 
     // Find best performing period
@@ -201,6 +205,7 @@ const analyzeTrends = (trends: TrendData[]) => {
         volatility,
         consistency,
         recommendations,
+        color,
     };
 };
 
@@ -346,22 +351,6 @@ const getTrendIcon = (
 };
 
 /**
- * Get trend color based on direction
- */
-const getTrendColor = (
-    direction: "improving" | "declining" | "stable",
-): string => {
-    switch (direction) {
-        case "improving":
-            return "#34C759";
-        case "declining":
-            return "#FF3B30";
-        case "stable":
-            return "#007AFF";
-    }
-};
-
-/**
  * Get trend label based on direction
  */
 const getTrendLabel = (
@@ -384,7 +373,6 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 18,
         fontWeight: "600",
-        color: "#1a1a1a",
         marginBottom: 20,
     },
     trendSection: {
@@ -410,12 +398,10 @@ const styles = StyleSheet.create({
     },
     trendDescription: {
         fontSize: 14,
-        color: "#666",
         lineHeight: 20,
     },
     trendChange: {
         fontSize: 12,
-        color: "#999",
         fontStyle: "italic",
         marginTop: 4,
     },
@@ -425,7 +411,6 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 16,
         fontWeight: "600",
-        color: "#1a1a1a",
         marginBottom: 12,
     },
     metricsGrid: {
@@ -438,18 +423,15 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginBottom: 12,
         padding: 12,
-        backgroundColor: "#f8f9fa",
         borderRadius: 8,
     },
     metricValue: {
         fontSize: 18,
         fontWeight: "bold",
-        color: "#007AFF",
         marginBottom: 4,
     },
     metricLabel: {
         fontSize: 11,
-        color: "#666",
         textAlign: "center",
     },
     insightsSection: {
@@ -462,7 +444,6 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "flex-start",
         padding: 12,
-        backgroundColor: "#f8f9fa",
         borderRadius: 8,
     },
     insightIcon: {
@@ -476,17 +457,14 @@ const styles = StyleSheet.create({
     insightTitle: {
         fontSize: 13,
         fontWeight: "600",
-        color: "#1a1a1a",
         marginBottom: 4,
     },
     insightText: {
         fontSize: 12,
-        color: "#666",
         lineHeight: 16,
     },
     recommendationsSection: {
         borderTopWidth: 1,
-        borderTopColor: "#f0f0f0",
         paddingTop: 16,
     },
     recommendationsList: {
@@ -498,14 +476,12 @@ const styles = StyleSheet.create({
     },
     recommendationBullet: {
         fontSize: 14,
-        color: "#007AFF",
         marginRight: 8,
         marginTop: 2,
     },
     recommendationText: {
         flex: 1,
         fontSize: 13,
-        color: "#666",
         lineHeight: 18,
     },
 });

@@ -294,7 +294,10 @@ export default function FriendsScreen() {
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <SafeAreaView
+            style={{ flex: 1, backgroundColor: colors.background }}
+            edges={["top", "left", "right"]}
+        >
             <Container padding="lg" style={{ flex: 1 }}>
                 <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
                     <AnimatedView animation="fadeIn">

@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, View, ViewStyle } from "react-native";
+import { useThemeStyles } from "../../hooks/useTheme";
 import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
 
@@ -19,18 +20,19 @@ interface ConsistencyScoreDisplayProps {
 export const ConsistencyScoreDisplay: React.FC<
     ConsistencyScoreDisplayProps
 > = ({ score, style, showDetails = true }) => {
+    const { colors, spacing, typography } = useThemeStyles();
     const scoreLevel = getScoreLevel(score);
-    const scoreColor = getScoreColor(score);
+    const scoreColor = getScoreColor(score, colors);
 
     return (
         <Card style={StyleSheet.flatten([styles.container, style])}>
-            <Text style={styles.title}>Consistency Score</Text>
+            <Text style={styles.title} color="foreground">Consistency Score</Text>
 
             {/* Score Circle */}
             <View style={styles.scoreContainer}>
                 <View style={styles.scoreCircleContainer}>
                     <View
-                        style={[styles.scoreCircleBackground, { borderColor: scoreColor }]}
+                        style={[styles.scoreCircleBackground, { borderColor: scoreColor, backgroundColor: colors.muted + '10' }]}
                     >
                         <View
                             style={[
@@ -45,16 +47,13 @@ export const ConsistencyScoreDisplay: React.FC<
                                 },
                             ]}
                         />
-                        <View style={styles.scoreCircleInner}>
+                        <View style={[styles.scoreCircleInner, { backgroundColor: colors.card }]}>
                             <Text
-                                style={StyleSheet.flatten([
-                                    styles.scoreValue,
-                                    { color: scoreColor },
-                                ])}
+                                style={{ color: scoreColor, fontSize: 28, fontWeight: 'bold', lineHeight: 32 }}
                             >
                                 {score.toFixed(0)}
                             </Text>
-                            <Text style={styles.scoreUnit}>%</Text>
+                            <Text style={styles.scoreUnit} color="muted">%</Text>
                         </View>
                     </View>
                 </View>
@@ -62,14 +61,11 @@ export const ConsistencyScoreDisplay: React.FC<
                 {/* Score Level */}
                 <View style={styles.scoreLevelContainer}>
                     <Text
-                        style={StyleSheet.flatten([
-                            styles.scoreLevel,
-                            { color: scoreColor },
-                        ])}
+                        style={{ color: scoreColor, fontSize: 16, fontWeight: '600', marginBottom: 4 }}
                     >
                         {scoreLevel.label}
                     </Text>
-                    <Text style={styles.scoreLevelDescription}>
+                    <Text style={styles.scoreLevelDescription} color="muted">
                         {scoreLevel.description}
                     </Text>
                 </View>
@@ -77,7 +73,7 @@ export const ConsistencyScoreDisplay: React.FC<
 
             {/* Progress Bar Alternative for smaller displays */}
             <View style={styles.progressBarContainer}>
-                <View style={styles.progressBarBackground}>
+                <View style={[styles.progressBarBackground, { backgroundColor: colors.muted + '20' }]}>
                     <View
                         style={[
                             styles.progressBarFill,
@@ -88,30 +84,30 @@ export const ConsistencyScoreDisplay: React.FC<
                         ]}
                     />
                 </View>
-                <Text style={styles.progressBarLabel}>
+                <Text style={styles.progressBarLabel} color="muted">
                     {score.toFixed(1)}% Consistent
                 </Text>
             </View>
 
             {/* Score Details */}
             {showDetails && (
-                <View style={styles.detailsContainer}>
-                    <Text style={styles.detailsTitle}>What this means:</Text>
-                    <Text style={styles.detailsText}>{getScoreExplanation(score)}</Text>
+                <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
+                    <Text style={styles.detailsTitle} color="foreground">What this means:</Text>
+                    <Text style={styles.detailsText} color="muted">{getScoreExplanation(score)}</Text>
 
                     {/* Score Breakdown */}
-                    <View style={styles.breakdownContainer}>
-                        <Text style={styles.breakdownTitle}>Score Factors:</Text>
+                    <View style={[styles.breakdownContainer, { backgroundColor: colors.muted + '10' }]}>
+                        <Text style={styles.breakdownTitle} color="foreground">Score Factors:</Text>
                         <View style={styles.breakdownItem}>
-                            <Text style={styles.breakdownLabel}>• Completion Rate (40%)</Text>
+                            <Text style={styles.breakdownLabel} color="muted">• Completion Rate (40%)</Text>
                         </View>
                         <View style={styles.breakdownItem}>
-                            <Text style={styles.breakdownLabel}>
+                            <Text style={styles.breakdownLabel} color="muted">
                                 • Streak Consistency (30%)
                             </Text>
                         </View>
                         <View style={styles.breakdownItem}>
-                            <Text style={styles.breakdownLabel}>
+                            <Text style={styles.breakdownLabel} color="muted">
                                 • Day-of-Week Consistency (30%)
                             </Text>
                         </View>
@@ -164,11 +160,11 @@ const getScoreLevel = (
 /**
  * Get color based on score value
  */
-const getScoreColor = (score: number): string => {
-    if (score >= 80) return "#34C759"; // Green
-    if (score >= 60) return "#FF9500"; // Orange
-    if (score >= 40) return "#FFCC00"; // Yellow
-    return "#FF3B30"; // Red
+const getScoreColor = (score: number, colors: any): string => {
+    if (score >= 80) return colors.success; 
+    if (score >= 60) return colors.warning;
+    if (score >= 40) return colors.warning; 
+    return colors.destructive;
 };
 
 /**
@@ -197,7 +193,6 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 18,
         fontWeight: "600",
-        color: "#1a1a1a",
         marginBottom: 20,
         textAlign: "center",
     },
@@ -213,7 +208,6 @@ const styles = StyleSheet.create({
         height: 120,
         borderRadius: 60,
         borderWidth: 8,
-        backgroundColor: "#f0f0f0",
         justifyContent: "center",
         alignItems: "center",
         position: "relative",
@@ -231,7 +225,6 @@ const styles = StyleSheet.create({
         width: 96,
         height: 96,
         borderRadius: 48,
-        backgroundColor: "#fff",
         justifyContent: "center",
         alignItems: "center",
         zIndex: 1,
@@ -243,7 +236,6 @@ const styles = StyleSheet.create({
     },
     scoreUnit: {
         fontSize: 14,
-        color: "#666",
         marginTop: -4,
     },
     scoreLevelContainer: {
@@ -256,7 +248,6 @@ const styles = StyleSheet.create({
     },
     scoreLevelDescription: {
         fontSize: 12,
-        color: "#666",
         textAlign: "center",
         maxWidth: 200,
     },
@@ -265,7 +256,6 @@ const styles = StyleSheet.create({
     },
     progressBarBackground: {
         height: 8,
-        backgroundColor: "#f0f0f0",
         borderRadius: 4,
         overflow: "hidden",
         marginBottom: 8,
@@ -277,35 +267,29 @@ const styles = StyleSheet.create({
     },
     progressBarLabel: {
         fontSize: 12,
-        color: "#666",
         textAlign: "center",
     },
     detailsContainer: {
         borderTopWidth: 1,
-        borderTopColor: "#f0f0f0",
         paddingTop: 16,
     },
     detailsTitle: {
         fontSize: 14,
         fontWeight: "600",
-        color: "#1a1a1a",
         marginBottom: 8,
     },
     detailsText: {
         fontSize: 13,
-        color: "#666",
         lineHeight: 18,
         marginBottom: 16,
     },
     breakdownContainer: {
-        backgroundColor: "#f8f9fa",
         padding: 12,
         borderRadius: 8,
     },
     breakdownTitle: {
         fontSize: 12,
         fontWeight: "600",
-        color: "#1a1a1a",
         marginBottom: 8,
     },
     breakdownItem: {
@@ -313,6 +297,5 @@ const styles = StyleSheet.create({
     },
     breakdownLabel: {
         fontSize: 11,
-        color: "#666",
     },
 });

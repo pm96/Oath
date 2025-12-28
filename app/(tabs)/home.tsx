@@ -393,7 +393,10 @@ export default function Home() {
     );
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <SafeAreaView
+            style={{ flex: 1, backgroundColor: colors.background }}
+            edges={["top", "left", "right"]}
+        >
             <Container padding="lg">
                 <ScrollView
                     showsVerticalScrollIndicator={false}
@@ -464,8 +467,6 @@ export default function Home() {
                                             width: 64,
                                             height: 64,
                                             borderRadius: 32,
-                                            backgroundColor: colors.primary,
-                                            shadowColor: colors.primary,
                                             shadowOffset: { width: 0, height: 4 },
                                             shadowOpacity: 0.3,
                                             shadowRadius: 8,
@@ -474,7 +475,7 @@ export default function Home() {
                                         accessibilityLabel="Add a new habit"
                                         accessibilityHint="Opens the create habit form"
                                     >
-                                        <Plus size={34} color="white" />
+                                        <Plus size={34} color={colors.primaryForeground} />
                                     </Button>
                                 </HStack>
                             </View>

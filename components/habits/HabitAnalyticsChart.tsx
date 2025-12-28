@@ -1,5 +1,6 @@
 import React from "react";
 import { Dimensions, StyleSheet, View } from "react-native";
+import { useThemeStyles } from "../../hooks/useTheme";
 import { TrendData } from "../../types/habit-streaks";
 import { Text } from "../ui/Text";
 
@@ -21,15 +22,16 @@ export const HabitAnalyticsChart: React.FC<HabitAnalyticsChartProps> = ({
     height = 200,
     showLabels = true,
 }) => {
+    const { colors, spacing } = useThemeStyles();
     const screenWidth = Dimensions.get("window").width;
     const chartWidth = screenWidth - 80; // Account for margins and padding
     const chartHeight = height - 60; // Account for labels
 
     if (trends.length === 0) {
         return (
-            <View style={[styles.container, { height }]}>
+            <View style={[styles.container, { height, backgroundColor: colors.card }]}>
                 <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No trend data available</Text>
+                    <Text style={StyleSheet.flatten([styles.emptyText, { color: colors.mutedForeground }])}>No trend data available</Text>
                 </View>
             </View>
         );
@@ -48,11 +50,116 @@ export const HabitAnalyticsChart: React.FC<HabitAnalyticsChartProps> = ({
         return { x, y, trend };
     });
 
+    /**
+     * Get color for data point based on completion rate
+     */
+    const getPointColor = (completionRate: number): string => {
+        if (completionRate >= 80) return colors.success;
+        if (completionRate >= 60) return colors.warning;
+        if (completionRate >= 40) return colors.warning;
+        return colors.destructive;
+    };
+
+    /**
+     * Render grid lines for the chart
+     */
+    const renderGridLines = (
+        width: number,
+        height: number,
+        maxRate: number,
+        minRate: number,
+    ): React.ReactNode => {
+        const gridLines = [];
+        const numLines = 4;
+
+        // Horizontal grid lines
+        for (let i = 0; i <= numLines; i++) {
+            const y = (i / numLines) * height;
+            gridLines.push(
+                <View
+                    key={`h-${i}`}
+                    style={[
+                        styles.gridLine,
+                        {
+                            top: y,
+                            width: width,
+                            height: 1,
+                            backgroundColor: colors.border,
+                        },
+                    ]}
+                />,
+            );
+        }
+
+        // Vertical grid lines
+        const numVerticalLines = Math.min(5, Math.floor(width / 60));
+        for (let i = 0; i <= numVerticalLines; i++) {
+            const x = (i / numVerticalLines) * width;
+            gridLines.push(
+                <View
+                    key={`v-${i}`}
+                    style={[
+                        styles.gridLine,
+                        {
+                            left: x,
+                            width: 1,
+                            height: height,
+                            backgroundColor: colors.border,
+                        },
+                    ]}
+                />,
+            );
+        }
+
+        return gridLines;
+    };
+
+    /**
+     * Render the trend line connecting data points
+     */
+    const renderTrendLine = (
+        dataPoints: { x: number; y: number; trend: TrendData }[],
+    ): React.ReactNode => {
+        if (dataPoints.length < 2) return null;
+
+        const lineSegments = [];
+
+        for (let i = 0; i < dataPoints.length - 1; i++) {
+            const start = dataPoints[i];
+            const end = dataPoints[i + 1];
+
+            const length = Math.sqrt(
+                Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2),
+            );
+
+            const angle =
+                Math.atan2(end.y - start.y, end.x - start.x) * (180 / Math.PI);
+
+            lineSegments.push(
+                <View
+                    key={i}
+                    style={[
+                        styles.lineSegment,
+                        {
+                            left: start.x,
+                            top: start.y,
+                            width: length,
+                            transform: [{ rotate: `${angle}deg` }],
+                            backgroundColor: colors.primary,
+                        },
+                    ]}
+                />,
+            );
+        }
+
+        return lineSegments;
+    };
+
     return (
-        <View style={[styles.container, { height }]}>
+        <View style={[styles.container, { height, backgroundColor: colors.card }]}>
             {/* Chart Area */}
             <View
-                style={[styles.chartArea, { width: chartWidth, height: chartHeight }]}
+                style={[styles.chartArea, { width: chartWidth, height: chartHeight, backgroundColor: colors.muted + '10' }]}
             >
                 {/* Grid Lines */}
                 {renderGridLines(chartWidth, chartHeight, maxRate, minRate)}
@@ -70,6 +177,7 @@ export const HabitAnalyticsChart: React.FC<HabitAnalyticsChartProps> = ({
                                 left: point.x - 4,
                                 top: point.y - 4,
                                 backgroundColor: getPointColor(point.trend.completionRate),
+                                borderColor: colors.card,
                             },
                         ]}
                     />
@@ -78,11 +186,11 @@ export const HabitAnalyticsChart: React.FC<HabitAnalyticsChartProps> = ({
 
             {/* Y-Axis Labels */}
             <View style={styles.yAxisLabels}>
-                <Text style={styles.axisLabel}>{maxRate.toFixed(0)}%</Text>
-                <Text style={styles.axisLabel}>
+                <Text style={StyleSheet.flatten([styles.axisLabel, { color: colors.mutedForeground }])}>{maxRate.toFixed(0)}%</Text>
+                <Text style={StyleSheet.flatten([styles.axisLabel, { color: colors.mutedForeground }])}>
                     {((maxRate + minRate) / 2).toFixed(0)}%
                 </Text>
-                <Text style={styles.axisLabel}>{minRate.toFixed(0)}%</Text>
+                <Text style={StyleSheet.flatten([styles.axisLabel, { color: colors.mutedForeground }])}>{minRate.toFixed(0)}%</Text>
             </View>
 
             {/* X-Axis Labels */}
@@ -101,10 +209,13 @@ export const HabitAnalyticsChart: React.FC<HabitAnalyticsChartProps> = ({
                         return (
                             <Text
                                 key={index}
-                                style={{
-                                    ...styles.xAxisLabel,
-                                    left: x - 30, // Center the label
-                                }}
+                                style={StyleSheet.flatten([
+                                    styles.xAxisLabel,
+                                    {
+                                        left: x - 30, // Center the label
+                                        color: colors.mutedForeground,
+                                    }
+                                ])}
                             >
                                 {formatPeriodLabel(trend.period)}
                             </Text>
@@ -114,108 +225,6 @@ export const HabitAnalyticsChart: React.FC<HabitAnalyticsChartProps> = ({
             )}
         </View>
     );
-};
-
-/**
- * Get color for data point based on completion rate
- */
-const getPointColor = (completionRate: number): string => {
-    if (completionRate >= 80) return "#34C759"; // Green
-    if (completionRate >= 60) return "#FF9500"; // Orange
-    if (completionRate >= 40) return "#FFCC00"; // Yellow
-    return "#FF3B30"; // Red
-};
-
-/**
- * Render grid lines for the chart
- */
-const renderGridLines = (
-    width: number,
-    height: number,
-    maxRate: number,
-    minRate: number,
-): React.ReactNode => {
-    const gridLines = [];
-    const numLines = 4;
-
-    // Horizontal grid lines
-    for (let i = 0; i <= numLines; i++) {
-        const y = (i / numLines) * height;
-        gridLines.push(
-            <View
-                key={`h-${i}`}
-                style={[
-                    styles.gridLine,
-                    {
-                        top: y,
-                        width: width,
-                        height: 1,
-                    },
-                ]}
-            />,
-        );
-    }
-
-    // Vertical grid lines
-    const numVerticalLines = Math.min(5, Math.floor(width / 60));
-    for (let i = 0; i <= numVerticalLines; i++) {
-        const x = (i / numVerticalLines) * width;
-        gridLines.push(
-            <View
-                key={`v-${i}`}
-                style={[
-                    styles.gridLine,
-                    {
-                        left: x,
-                        width: 1,
-                        height: height,
-                    },
-                ]}
-            />,
-        );
-    }
-
-    return gridLines;
-};
-
-/**
- * Render the trend line connecting data points
- */
-const renderTrendLine = (
-    dataPoints: { x: number; y: number; trend: TrendData }[],
-): React.ReactNode => {
-    if (dataPoints.length < 2) return null;
-
-    const lineSegments = [];
-
-    for (let i = 0; i < dataPoints.length - 1; i++) {
-        const start = dataPoints[i];
-        const end = dataPoints[i + 1];
-
-        const length = Math.sqrt(
-            Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2),
-        );
-
-        const angle =
-            Math.atan2(end.y - start.y, end.x - start.x) * (180 / Math.PI);
-
-        lineSegments.push(
-            <View
-                key={i}
-                style={[
-                    styles.lineSegment,
-                    {
-                        left: start.x,
-                        top: start.y,
-                        width: length,
-                        transform: [{ rotate: `${angle}deg` }],
-                    },
-                ]}
-            />,
-        );
-    }
-
-    return lineSegments;
 };
 
 /**
@@ -235,7 +244,7 @@ const formatPeriodLabel = (period: string): string => {
     // For date strings, show just month/day
     if (period.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const date = new Date(period);
-        return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
     }
 
     return period;
@@ -244,11 +253,9 @@ const formatPeriodLabel = (period: string): string => {
 const styles = StyleSheet.create({
     container: {
         padding: 16,
-        backgroundColor: "#fff",
     },
     chartArea: {
         position: "relative",
-        backgroundColor: "#fafafa",
         borderRadius: 8,
         padding: 8,
     },
@@ -259,11 +266,9 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: 14,
-        color: "#999",
     },
     gridLine: {
         position: "absolute",
-        backgroundColor: "#e0e0e0",
     },
     lineContainer: {
         position: "absolute",
@@ -275,7 +280,6 @@ const styles = StyleSheet.create({
     lineSegment: {
         position: "absolute",
         height: 2,
-        backgroundColor: "#007AFF",
         transformOrigin: "left center",
     },
     dataPoint: {
@@ -284,7 +288,6 @@ const styles = StyleSheet.create({
         height: 8,
         borderRadius: 4,
         borderWidth: 2,
-        borderColor: "#fff",
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.2,
@@ -301,7 +304,6 @@ const styles = StyleSheet.create({
     },
     axisLabel: {
         fontSize: 10,
-        color: "#666",
         textAlign: "right",
         width: 35,
     },
@@ -313,7 +315,6 @@ const styles = StyleSheet.create({
     xAxisLabel: {
         position: "absolute",
         fontSize: 10,
-        color: "#666",
         textAlign: "center",
         width: 60,
     },

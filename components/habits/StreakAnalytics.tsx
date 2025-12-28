@@ -338,92 +338,90 @@ export function StreakAnalytics({
     }
 
     return (
-        <ScrollView style={style} showsVerticalScrollIndicator={false}>
-            <View style={{ padding: spacing.md }}>
-                {renderKeyMetrics()}
+        <View style={style}>
+            {renderKeyMetrics()}
 
-                {/* Consistency Score */}
-                <ConsistencyScoreDisplay
-                    score={analytics.consistencyScore}
-                    style={{ marginBottom: spacing.md }}
-                />
+            {/* Consistency Score */}
+            <ConsistencyScoreDisplay
+                score={analytics.consistencyScore}
+                style={{ marginBottom: spacing.md }}
+            />
 
-                {/* Completion Trends Chart */}
-                <Card variant="elevated" style={{ marginBottom: spacing.md }}>
-                    <Text
+            {/* Completion Trends Chart */}
+            <Card variant="elevated" style={{ marginBottom: spacing.md }}>
+                <Text
+                    style={{
+                        fontSize: typography.sizes.lg,
+                        fontWeight: "600",
+                        color: colors.foreground,
+                        marginBottom: spacing.md,
+                    }}
+                >
+                    Completion Trends
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <HabitAnalyticsChart trends={trends} height={200} />
+                </ScrollView>
+            </Card>
+
+            {/* Trend Analysis */}
+            <TrendAnalysisDisplay
+                trends={trends}
+                analytics={analytics}
+                style={{ marginBottom: spacing.md }}
+            />
+
+            {/* Performance Insights */}
+            <Card variant="elevated" style={{ marginBottom: spacing.md }}>
+                <Text
+                    style={{
+                        fontSize: typography.sizes.lg,
+                        fontWeight: "600",
+                        color: colors.foreground,
+                        marginBottom: spacing.md,
+                    }}
+                >
+                    Performance Insights
+                </Text>
+                <View style={{ gap: spacing.sm }}>
+                    {/* Simple insights without complex styling */}
+                    <View
                         style={{
-                            fontSize: typography.sizes.lg,
-                            fontWeight: "600",
-                            color: colors.foreground,
-                            marginBottom: spacing.md,
+                            flexDirection: "row",
+                            alignItems: "flex-start",
+                            padding: 12,
+                            backgroundColor: colors.muted + "10",
+                            borderRadius: 8,
                         }}
                     >
-                        Completion Trends
-                    </Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        <HabitAnalyticsChart trends={trends} height={200} />
-                    </ScrollView>
-                </Card>
-
-                {/* Trend Analysis */}
-                <TrendAnalysisDisplay
-                    trends={trends}
-                    analytics={analytics}
-                    style={{ marginBottom: spacing.md }}
-                />
-
-                {/* Performance Insights */}
-                <Card variant="elevated" style={{ marginBottom: spacing.md }}>
-                    <Text
-                        style={{
-                            fontSize: typography.sizes.lg,
-                            fontWeight: "600",
-                            color: colors.foreground,
-                            marginBottom: spacing.md,
-                        }}
-                    >
-                        Performance Insights
-                    </Text>
-                    <View style={{ gap: spacing.sm }}>
-                        {/* Simple insights without complex styling */}
-                        <View
-                            style={{
-                                flexDirection: "row",
-                                alignItems: "flex-start",
-                                padding: 12,
-                                backgroundColor: "rgba(0,0,0,0.02)",
-                                borderRadius: 8,
-                            }}
-                        >
-                            <Text style={{ fontSize: 20, marginRight: 12, marginTop: 2 }}>
-                                📊
+                        <Text style={{ fontSize: 20, marginRight: 12, marginTop: 2 }}>
+                            📊
+                        </Text>
+                        <View style={{ flex: 1 }}>
+                            <Text
+                                style={{
+                                    fontSize: 14,
+                                    fontWeight: "600",
+                                    color: colors.foreground,
+                                    marginBottom: 4,
+                                }}
+                            >
+                                Analytics Summary
                             </Text>
-                            <View style={{ flex: 1 }}>
-                                <Text
-                                    style={{
-                                        fontSize: 14,
-                                        fontWeight: "600",
-                                        color: colors.foreground,
-                                        marginBottom: 4,
-                                    }}
-                                >
-                                    Analytics Summary
-                                </Text>
-                                <Text
-                                    style={{
-                                        fontSize: 13,
-                                        lineHeight: 18,
-                                        color: colors.mutedForeground,
-                                    }}
-                                >
-                                    {analytics.bestDayOfWeek} is your most consistent day with a{" "}
-                                    {analytics.completionRate30Days.toFixed(1)}% completion rate.
-                                </Text>
-                            </View>
+                            <Text
+                                style={{
+                                    fontSize: 13,
+                                    lineHeight: 18,
+                                    color: colors.mutedForeground,
+                                }}
+                            >
+                                {analytics.bestDayOfWeek} is your most consistent day with a{" "}
+                                {analytics.completionRate30Days.toFixed(1)}% completion rate.
+                            </Text>
                         </View>
                     </View>
-                </Card>
-            </View>
-        </ScrollView>
+                </View>
+            </Card>
+        </View>
     );
 }
