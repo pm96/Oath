@@ -56,7 +56,7 @@ export function useFriendSearch(userId: string | undefined) {
             setError(null);
 
             try {
-                const results = await searchUsers(debouncedQuery, userId);
+                const results = await searchUsers(debouncedQuery);
                 setSearchResults(results);
             } catch (err) {
                 const errorMessage =

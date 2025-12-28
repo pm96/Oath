@@ -1,3 +1,5 @@
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { app } from "../../firebaseConfig";
 import {
     getUserFriendlyErrorMessage,
     retryWithBackoff,
@@ -446,6 +448,54 @@ export async function updateUserNotificationSettings(
         // Use set with merge:true to create or update the settings map
         await updateDoc(userDocRef, {
             notificationSettings: settings,
+        });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to update settings: ${message}`);
+    }
+}
+
+const functions = getFunctions(app);
+
+/**
+ * Update user's profile information.
+ * @param displayName The new display name for the user.
+ */
+export async function updateUserProfile(displayName: string): Promise<void> {
+    try {
+        const updateUser = httpsCallable<
+            { displayName: string },
+            { success: boolean }
+        >(functions, "updateUserProfile");
+
+        const result = await updateUser({ displayName });
+
+        if (!result.data.success) {
+            throw new Error("Failed to update profile on the server.");
+        }
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(message);
+    }
+}
+
+/**
+ * Update user's privacy settings in Firestore.
+ * @param userId The ID of the user to update.
+ * @param settings An object containing the privacy settings to update.
+ */
+export async function updatePrivacySettings(
+    userId: string,
+    settings: { [key: string]: any },
+): Promise<void> {
+    if (!userId) {
+        throw new Error("User ID is required to update settings.");
+    }
+
+    try {
+        const userDocRef = getUserDoc(userId);
+        await updateDoc(userDocRef, {
+            privacySettings: settings,
         });
     } catch (error) {
         const message = getUserFriendlyErrorMessage(error);

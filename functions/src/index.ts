@@ -78,7 +78,9 @@ export const recordHabitCompletion = onCall(async (request) => {
 
         const result = await db.runTransaction(async (transaction) => {
             // --- 1. ALL READS ---
-            const goalRef = db.doc(`artifacts/${APP_ID}/public/data/goals/${habitId}`);
+            const goalRef = db.doc(
+                `artifacts/${APP_ID}/public/data/goals/${habitId}`,
+            );
             const streakRef = db.doc(
                 `artifacts/${APP_ID}/streaks/${userId}_${habitId}`,
             );
@@ -111,7 +113,9 @@ export const recordHabitCompletion = onCall(async (request) => {
                     .toDate()
                     .toISOString()
                     .split("T")[0];
-                return data.isActive !== false && existingDateString === completionDateString;
+                return (
+                    data.isActive !== false && existingDateString === completionDateString
+                );
             });
 
             if (alreadyCompleted) {
@@ -144,9 +148,11 @@ export const recordHabitCompletion = onCall(async (request) => {
                 userId,
             );
 
-            const existingMilestones = (existingStreakDoc.exists
-                ? existingStreakDoc.data()?.milestones || []
-                : []) as StoredMilestone[];
+            const existingMilestones = (
+                existingStreakDoc.exists
+                    ? existingStreakDoc.data()?.milestones || []
+                    : []
+            ) as StoredMilestone[];
 
             let freezesAvailable = updatedStreak.freezesAvailable;
             const newMilestones: StoredMilestone[] = [];
@@ -174,12 +180,16 @@ export const recordHabitCompletion = onCall(async (request) => {
                 currentStreak: updatedStreak.currentStreak,
                 bestStreak: Math.max(
                     updatedStreak.bestStreak,
-                    existingStreakDoc.exists ? existingStreakDoc.data()?.bestStreak || 0 : 0,
+                    existingStreakDoc.exists
+                        ? existingStreakDoc.data()?.bestStreak || 0
+                        : 0,
                 ),
                 lastCompletionDate: completionDateString,
                 streakStartDate: updatedStreak.streakStartDate,
                 freezesAvailable,
-                freezesUsed: existingStreakDoc.exists ? existingStreakDoc.data()?.freezesUsed || 0 : 0,
+                freezesUsed: existingStreakDoc.exists
+                    ? existingStreakDoc.data()?.freezesUsed || 0
+                    : 0,
                 milestones: [...existingMilestones, ...newMilestones],
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
@@ -198,9 +208,16 @@ export const recordHabitCompletion = onCall(async (request) => {
             // --- 3. ALL WRITES ---
             transaction.set(newCompletionRef, completionData);
             transaction.set(streakRef, streakData);
-            transaction.set(db.collection(`artifacts/${APP_ID}/auditLogs`).doc(), auditData);
+            transaction.set(
+                db.collection(`artifacts/${APP_ID}/auditLogs`).doc(),
+                auditData,
+            );
 
-            return { completionId: newCompletionRef.id, streak: streakData, newMilestones };
+            return {
+                completionId: newCompletionRef.id,
+                streak: streakData,
+                newMilestones,
+            };
         });
 
         console.log(`Completion recorded for user ${userId}, habit ${habitId}`);
@@ -267,7 +284,7 @@ export const undoHabitCompletion = onCall(async (request) => {
     });
 
     const completionsRef = db.collection(`artifacts/${APP_ID}/completions`);
-    let completionDoc;
+    let completionDoc: admin.firestore.DocumentSnapshot | undefined;
 
     if (lastCompletionId) {
         const completionRef = completionsRef.doc(lastCompletionId);
@@ -295,14 +312,22 @@ export const undoHabitCompletion = onCall(async (request) => {
         return { success: true };
     }
 
+    if (!completionDoc) {
+        console.warn("Completion document is undefined, cannot proceed with undo.");
+        return { success: false, error: "Completion document not found." };
+    }
+
     await db.runTransaction(async (transaction) => {
+        if (!completionDoc) {
+            // This check is for type safety, though the above check should handle it.
+            return;
+        }
         transaction.delete(completionDoc.ref);
 
         const nextDeadline = calculateNextDeadline(
             goalData.frequency,
             goalData.targetDays,
         );
-
         transaction.update(goalRef, {
             latestCompletionDate: null,
             nextDeadline: admin.firestore.Timestamp.fromDate(nextDeadline),
@@ -610,13 +635,18 @@ export const deleteHabit = onCall(async (request) => {
     const { habitId } = request.data;
 
     if (!habitId) {
-        throw new HttpsError("invalid-argument", "habitId is required for deletion.");
+        throw new HttpsError(
+            "invalid-argument",
+            "habitId is required for deletion.",
+        );
     }
 
     // Define references to all documents that need to be deleted
     const goalRef = db.doc(`artifacts/${APP_ID}/public/data/goals/${habitId}`);
     const streakRef = db.doc(`artifacts/${APP_ID}/streaks/${userId}_${habitId}`);
-    const analyticsRef = db.doc(`artifacts/${APP_ID}/analytics/${userId}_${habitId}`);
+    const analyticsRef = db.doc(
+        `artifacts/${APP_ID}/analytics/${userId}_${habitId}`,
+    );
     const completionsQuery = db
         .collection(`artifacts/${APP_ID}/completions`)
         .where("habitId", "==", habitId)
@@ -654,7 +684,9 @@ export const deleteHabit = onCall(async (request) => {
         // Commit the batch
         await batch.commit();
 
-        console.log(`Successfully deleted habit ${habitId} and all associated data for user ${userId}.`);
+        console.log(
+            `Successfully deleted habit ${habitId} and all associated data for user ${userId}.`,
+        );
         return { success: true, message: "Habit deleted successfully." };
     } catch (error) {
         console.error(`Error deleting habit ${habitId} for user ${userId}:`, error);
@@ -678,8 +710,15 @@ export const findUserByInviteCode = onCall(async (request) => {
 
     const { inviteCode } = request.data;
 
-    if (!inviteCode || typeof inviteCode !== "string" || inviteCode.length === 0) {
-        throw new HttpsError("invalid-argument", "A valid invite code is required.");
+    if (
+        !inviteCode ||
+        typeof inviteCode !== "string" ||
+        inviteCode.length === 0
+    ) {
+        throw new HttpsError(
+            "invalid-argument",
+            "A valid invite code is required.",
+        );
     }
 
     const usersRef = db.collection(`artifacts/${APP_ID}/users`);
@@ -689,7 +728,10 @@ export const findUserByInviteCode = onCall(async (request) => {
         .get();
 
     if (querySnapshot.empty) {
-        throw new HttpsError("not-found", `No user found with invite code "${inviteCode}".`);
+        throw new HttpsError(
+            "not-found",
+            `No user found with invite code "${inviteCode}".`,
+        );
     }
 
     const userDoc = querySnapshot.docs[0];
@@ -703,6 +745,193 @@ export const findUserByInviteCode = onCall(async (request) => {
     };
 });
 
+/**
+ * Callable Cloud Function to update a user's profile information.
+ */
+export const updateUserProfile = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to update their profile.",
+        );
+    }
+
+    const { displayName } = request.data;
+
+    if (
+        !displayName ||
+        typeof displayName !== "string" ||
+        displayName.trim().length === 0
+    ) {
+        throw new HttpsError(
+            "invalid-argument",
+            "A valid displayName is required.",
+        );
+    }
+
+    const trimmedName = displayName.trim();
+    if (trimmedName.length > 50) {
+        throw new HttpsError(
+            "invalid-argument",
+            "Display name cannot exceed 50 characters.",
+        );
+    }
+
+    const userId = request.auth.uid;
+    const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+
+    try {
+        await userRef.update({
+            displayName: trimmedName,
+            searchableName: trimmedName.toLowerCase(),
+        });
+
+        console.log(`User profile updated for ${userId}`);
+        return { success: true, message: "Profile updated successfully." };
+    } catch (error) {
+        console.error(`Error updating profile for user ${userId}:`, error);
+        throw new HttpsError("internal", "Failed to update user profile.");
+    }
+});
+
+/**
+ * Callable Cloud Function to delete a user's account and all associated data.
+ */
+export const deleteAccount = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to delete their account.",
+        );
+    }
+
+    const userId = request.auth.uid;
+    console.log(`Starting account deletion for user ${userId}`);
+
+    try {
+        // --- 1. Gather all documents to be deleted ---
+        const collectionsToDelete = ["completions", "streaks", "analytics"];
+        const userDocRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+        const goalsQuery = db
+            .collection(`artifacts/${APP_ID}/public/data/goals`)
+            .where("ownerId", "==", userId);
+
+        const queries = collectionsToDelete.map((collectionName) =>
+            db
+                .collection(`artifacts/${APP_ID}/${collectionName}`)
+                .where("userId", "==", userId)
+                .get(),
+        );
+        queries.push(goalsQuery.get());
+
+        // --- 2. Execute all queries ---
+        const snapshots = await Promise.all(queries);
+
+        // --- 3. Batch delete all documents ---
+        const batch = db.batch();
+
+        // Delete the main user document
+        batch.delete(userDocRef);
+
+        // Delete documents from each collection
+        snapshots.forEach((snapshot) => {
+            snapshot.docs.forEach((doc) => {
+                console.log(`Queueing deletion for: ${doc.ref.path}`);
+                batch.delete(doc.ref);
+            });
+        });
+
+        // Commit the batch to delete all Firestore data
+        await batch.commit();
+        console.log(`All Firestore data deleted for user ${userId}.`);
+
+        // --- 4. Delete user from Firebase Authentication ---
+        await admin.auth().deleteUser(userId);
+        console.log(
+            `Successfully deleted user account from Firebase Auth for ${userId}.`,
+        );
+
+        return { success: true, message: "Account deleted successfully." };
+    } catch (error) {
+        console.error(`Error deleting account for user ${userId}:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "Failed to delete account.");
+    }
+});
+
+/**
+ * Callable Cloud Function to search for users by name or email, respecting privacy settings.
+ */
+export const searchUsers = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to search for users.",
+        );
+    }
+    const currentUserId = request.auth.uid;
+    const { searchQuery } = request.data;
+
+    if (
+        !searchQuery ||
+        typeof searchQuery !== "string" ||
+        searchQuery.trim().length === 0
+    ) {
+        return [];
+    }
+
+    const lowerCaseQuery = searchQuery.toLowerCase().trim();
+    const usersCollection = db.collection(`artifacts/${APP_ID}/users`);
+    const results: any[] = [];
+    const uniqueUserIds = new Set<string>();
+
+    const emailQuery = usersCollection
+        .where("privacySettings.isSearchable", "==", true)
+        .where("searchableEmail", ">=", lowerCaseQuery)
+        .where("searchableEmail", "<=", lowerCaseQuery + "\uf8ff")
+        .limit(5);
+
+    const nameQuery = usersCollection
+        .where("privacySettings.isSearchable", "==", true)
+        .where("searchableName", ">=", lowerCaseQuery)
+        .where("searchableName", "<=", lowerCaseQuery + "\uf8ff")
+        .limit(5);
+
+    try {
+        const [emailSnapshot, nameSnapshot] = await Promise.all([
+            emailQuery.get(),
+            nameQuery.get(),
+        ]);
+
+        const processSnapshot = (snapshot: admin.firestore.QuerySnapshot) => {
+            snapshot.forEach((doc) => {
+                if (doc.id !== currentUserId && !uniqueUserIds.has(doc.id)) {
+                    const data = doc.data();
+                    results.push({
+                        userId: doc.id,
+                        displayName: data.displayName,
+                        email: data.email,
+                        relationshipStatus: "none", // Client will determine the real status
+                    });
+                    uniqueUserIds.add(doc.id);
+                }
+            });
+        };
+
+        processSnapshot(emailSnapshot);
+        processSnapshot(nameSnapshot);
+
+        return results;
+    } catch (error) {
+        console.error(
+            `Error searching users with query "${lowerCaseQuery}":`,
+            error,
+        );
+        throw new HttpsError("internal", "Failed to search for users.");
+    }
+});
 
 /**
  * Helper function to calculate streak from completions
@@ -1188,7 +1417,7 @@ export const sendFriendRequestNotification = onDocumentCreated(
                 console.log(`User ${receiverId} has disabled notifications.`);
                 return;
             }
-            
+
             const fcmToken = receiverData?.fcmToken;
 
             if (!fcmToken) {
@@ -1460,7 +1689,6 @@ export const sendStreakRiskReminders = onSchedule(
 
         try {
             const now = new Date();
-            const currentHour = now.getUTCHours();
 
             // Get all active streaks
             const streaksRef = db.collection(`artifacts/${APP_ID}/streaks`);
@@ -1468,13 +1696,13 @@ export const sendStreakRiskReminders = onSchedule(
 
             console.log(`Processing ${streaksSnapshot.size} streak records`);
 
-            const remindersToSend: Array<{
+            const remindersToSend: {
                 userId: string;
                 habitId: string;
                 habitName: string;
                 currentStreak: number;
                 fcmToken: string;
-            }> = [];
+            }[] = [];
 
             for (const streakDoc of streaksSnapshot.docs) {
                 const streakData = streakDoc.data();
@@ -1575,7 +1803,7 @@ export const sendStreakRiskReminders = onSchedule(
                         },
                     },
                 };
-
+                []
                 try {
                     await admin.messaging().send(fcmMessage);
                     console.log(
@@ -1646,7 +1874,7 @@ export const sendWeeklyProgressNotifications = onSchedule(
                     if (!userDoc.exists) continue;
 
                     const userData = userDoc.data();
-                     if (userData?.notificationSettings?.enabled === false) {
+                    if (userData?.notificationSettings?.enabled === false) {
                         continue;
                     }
                     const fcmToken = userData?.fcmToken;
@@ -1972,7 +2200,9 @@ export const sendPendingRecoveryNotifications = onSchedule(
 
                     const userData = userDoc.data();
                     if (userData?.notificationSettings?.enabled === false) {
-                        console.log(`User ${userId} has recovery notifications disabled, marking as sent`);
+                        console.log(
+                            `User ${userId} has recovery notifications disabled, marking as sent`,
+                        );
                         batch.update(doc.ref, { sent: true });
                         continue;
                     }

@@ -18,7 +18,7 @@ import {
 } from "react-native";
 
 export interface ButtonProps {
-    variant?: "primary" | "secondary" | "outline" | "ghost" | "success";
+    variant?: "primary" | "secondary" | "outline" | "ghost" | "success" | "destructive";
     size?: "sm" | "md" | "lg";
     disabled?: boolean;
     loading?: boolean;
@@ -92,9 +92,9 @@ export function Button({
             ghost: {
                 backgroundColor: disabled ? colors.muted : colors.background,
             },
-            success: {
-                backgroundColor: disabled ? colors.muted : colors.success,
-            }
+            destructive: {
+                backgroundColor: disabled ? colors.muted : colors.destructive,
+            },
         };
 
         return {
@@ -139,8 +139,8 @@ export function Button({
         ghost: {
             color: disabled ? colors.foreground : colors.primary,
         },
-        success: {
-            color: disabled ? colors.foreground : colors.primaryForeground,
+        destructive: {
+            color: disabled ? colors.foreground : colors.destructiveForeground,
         },
         };
 

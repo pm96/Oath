@@ -16,6 +16,7 @@ import { useTheme, useThemeStyles } from "@/hooks/useTheme";
 import { User } from "@/services/firebase/collections";
 import { subscribeToUserData, updateUserNotificationSettings } from "@/services/firebase/socialService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
+import { router } from "expo-router";
 import { Bell, LogOut, Moon, Settings, Shield } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { RefreshControl, ScrollView, Switch, View, TouchableOpacity } from "react-native";
@@ -211,7 +212,7 @@ export default function Profile() {
                 <Card variant="default" padding="md">
                     <VStack spacing="md">
                         {/* Privacy */}
-                        <TouchableOpacity onPress={() => showSuccessToast("Feature coming soon!", "Heads up")}>
+                        <TouchableOpacity onPress={() => router.push('/privacy-settings')}>
                             <HStack align="center" justify="space-between">
                                 <HStack align="center" spacing="md">
                                     <Shield size={20} color={colors.foreground} />
@@ -221,7 +222,7 @@ export default function Profile() {
                         </TouchableOpacity>
 
                         {/* Account Settings */}
-                        <TouchableOpacity onPress={() => showSuccessToast("Feature coming soon!", "Heads up")}>
+                        <TouchableOpacity onPress={() => router.push('/account-settings')}>
                             <HStack align="center" justify="space-between">
                                 <HStack align="center" spacing="md">
                                     <Settings size={20} color={colors.foreground} />

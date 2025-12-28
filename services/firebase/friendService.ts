@@ -13,6 +13,11 @@ import {
     limit,
     startAt,
     endAt,
+    runTransaction,
+    arrayUnion,
+    updateDoc,
+    arrayRemove,
+    Transaction,
 } from "firebase/firestore";
 import { app, db } from "../../firebaseConfig";
 import { getUserFriendlyErrorMessage } from "@/utils/errorHandling";
@@ -56,74 +61,23 @@ export async function findUserByInviteCode(inviteCode: string): Promise<PublicUs
 }
 
 /**
- * Searches for users by email or display name.
+ * Searches for users by email or display name by calling a Cloud Function.
  * @param searchQuery The query string.
- * @param currentUserId The ID of the current user, to exclude them from results.
  * @returns A list of matching users with their relationship status to the current user.
  */
-export async function searchUsers(searchQuery: string, currentUserId: string): Promise<UserSearchResult[]> {
+export async function searchUsers(searchQuery: string): Promise<UserSearchResult[]> {
     if (!searchQuery || searchQuery.trim().length === 0) {
         return [];
     }
 
-    const lowerCaseQuery = searchQuery.toLowerCase().trim();
-    const usersCollection = getUsersCollection();
-    const results: UserSearchResult[] = [];
-
-    // Simulate different search queries for email and name
-    const emailQuery = query(
-        usersCollection,
-        where("searchableEmail", ">=", lowerCaseQuery),
-        where("searchableEmail", "<=", lowerCaseQuery + "\uf8ff"),
-        limit(5) // Limit results to avoid excessive reads
-    );
-
-    const nameQuery = query(
-        usersCollection,
-        where("searchableName", ">=", lowerCaseQuery),
-        where("searchableName", "<=", lowerCaseQuery + "\uf8ff"),
-        limit(5) // Limit results to avoid excessive reads
-    );
-
     try {
-        const [emailSnapshot, nameSnapshot] = await Promise.all([
-            getDocs(emailQuery),
-            getDocs(nameQuery)
-        ]);
+        const search = httpsCallable<
+            { searchQuery: string },
+            UserSearchResult[]
+        >(functions, "searchUsers");
 
-        const uniqueUserIds = new Set<string>();
-
-        // Process email results
-        emailSnapshot.forEach(doc => {
-            if (doc.id !== currentUserId && !uniqueUserIds.has(doc.id)) {
-                const data = doc.data();
-                results.push({
-                    userId: doc.id,
-                    displayName: data.displayName,
-                    email: data.email,
-                    relationshipStatus: "none" // Default status
-                });
-                uniqueUserIds.add(doc.id);
-            }
-        });
-
-        // Process name results
-        nameSnapshot.forEach(doc => {
-            if (doc.id !== currentUserId && !uniqueUserIds.has(doc.id)) {
-                const data = doc.data();
-                results.push({
-                    userId: doc.id,
-                    displayName: data.displayName,
-                    email: data.email,
-                    relationshipStatus: "none" // Default status
-                });
-                uniqueUserIds.add(doc.id);
-            }
-        });
-
-        // Further optimization: fetch friend status from useFriendshipStatus hook
-        // For simplicity, we'll return "none" here and let the client handle status update
-        return results;
+        const result = await search({ searchQuery });
+        return result.data;
     } catch (error) {
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(`Failed to search users: ${message}`);
@@ -144,11 +98,14 @@ export async function sendFriendRequest(senderId: string, receiverId: string): P
         // Fetch sender's name to store on the request
         const senderDoc = await getDoc(getUserDoc(senderId));
         const senderName = senderDoc.data()?.displayName || "A User";
+        const senderEmail = senderDoc.data()?.email || "";
+
 
         const friendRequestsRef = collection(db, `artifacts/oath-app/friendRequests`);
         await addDoc(friendRequestsRef, {
             senderId,
             senderName,
+            senderEmail,
             receiverId,
             status: "pending",
             createdAt: serverTimestamp(),
@@ -196,4 +153,93 @@ export function subscribeToPendingRequests(
     );
 
     return unsubscribe;
+}
+
+/**
+ * Accepts a friend request.
+ * @param requestId The ID of the friend request to accept.
+ * @param userId The ID of the user accepting the request.
+ */
+export async function acceptFriendRequest(requestId: string, userId: string): Promise<void> {
+    const friendRequestRef = doc(db, `artifacts/oath-app/friendRequests`, requestId);
+
+    try {
+        const requestDoc = await getDoc(friendRequestRef);
+        if (!requestDoc.exists()) {
+            throw new Error("Friend request not found.");
+        }
+
+        const requestData = requestDoc.data();
+        if (requestData?.receiverId !== userId) {
+            throw new Error("You are not authorized to accept this request.");
+        }
+        if (requestData?.status !== "pending") {
+            throw new Error("Friend request is not pending.");
+        }
+
+        const senderId = requestData.senderId;
+        const senderUserRef = doc(db, `artifacts/oath-app/users`, senderId);
+        const receiverUserRef = doc(db, `artifacts/oath-app/users`, userId);
+
+        // Use a transaction to ensure atomicity
+        await runTransaction(db, async (transaction: Transaction) => {
+            transaction.update(friendRequestRef, { status: "accepted", updatedAt: serverTimestamp() });
+            transaction.update(senderUserRef, { friends: arrayUnion(userId) });
+            transaction.update(receiverUserRef, { friends: arrayUnion(senderId) });
+        });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to accept friend request: ${message}`);
+    }
+}
+
+/**
+ * Rejects a friend request.
+ * @param requestId The ID of the friend request to reject.
+ * @param userId The ID of the user rejecting the request.
+ */
+export async function rejectFriendRequest(requestId: string, userId: string): Promise<void> {
+    const friendRequestRef = doc(db, `artifacts/oath-app/friendRequests`, requestId);
+
+    try {
+        const requestDoc = await getDoc(friendRequestRef);
+        if (!requestDoc.exists()) {
+            throw new Error("Friend request not found.");
+        }
+
+        const requestData = requestDoc.data();
+        if (requestData?.receiverId !== userId) {
+            throw new Error("You are not authorized to reject this request.");
+        }
+        if (requestData?.status !== "pending") {
+            throw new Error("Friend request is not pending.");
+        }
+
+        await updateDoc(friendRequestRef, { status: "rejected", updatedAt: serverTimestamp() });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to reject friend request: ${message}`);
+    }
+}
+
+/**
+ * Removes a friend from both users' friends lists.
+ * @param currentUserId The ID of the current user.
+ * @param friendId The ID of the friend to remove.
+ */
+export async function removeFriend(currentUserId: string, friendId: string): Promise<void> {
+    const currentUserRef = doc(db, `artifacts/oath-app/users`, currentUserId);
+    const friendUserRef = doc(db, `artifacts/oath-app/users`, friendId);
+
+    try {
+        await runTransaction(db, async (transaction: Transaction) => {
+            // Remove friendId from current user's friends array
+            transaction.update(currentUserRef, { friends: arrayRemove(friendId) });
+            // Remove currentUserId from friend's friends array
+            transaction.update(friendUserRef, { friends: arrayRemove(currentUserId) });
+        });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to remove friend: ${message}`);
+    }
 }

@@ -174,7 +174,7 @@ const BadgeIcon = React.forwardRef<
   if (typeof size === 'number') {
     return (
       <UIIcon
-        ref={ref}
+        ref={ref as any}
         {...props}
         className={badgeIconStyle({ class: className })}
         size={size}
@@ -186,7 +186,7 @@ const BadgeIcon = React.forwardRef<
   ) {
     return (
       <UIIcon
-        ref={ref}
+        ref={ref as any}
         {...props}
         className={badgeIconStyle({ class: className })}
       />
@@ -203,7 +203,7 @@ const BadgeIcon = React.forwardRef<
         class: className,
       })}
       {...props}
-      ref={ref}
+      ref={ref as any}
     />
   );
 });

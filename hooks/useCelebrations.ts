@@ -3,7 +3,8 @@
  * Requirements: 3.1, 3.2 - Celebration system integration
  */
 
-import { celebrationManager, soundManager } from "@/utils/celebrations";
+import { useCelebration } from "@/contexts/CelebrationContext";
+import { soundManager } from "@/utils/celebrations";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useState } from "react";
 
@@ -30,6 +31,7 @@ export function useCelebrations() {
     const [preferences, setPreferences] =
         useState<CelebrationPreferences>(DEFAULT_PREFERENCES);
     const [loading, setLoading] = useState(true);
+    const { triggerCelebration } = useCelebration();
 
     /**
      * Load preferences from storage
@@ -57,9 +59,6 @@ export function useCelebrations() {
                 const updated = { ...preferences, ...newPreferences };
                 await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
                 setPreferences(updated);
-
-                // Update celebration manager settings
-                celebrationManager.setSoundEnabled(updated.soundEnabled);
             } catch (error) {
                 console.warn("Failed to save celebration preferences:", error);
             }
@@ -68,61 +67,34 @@ export function useCelebrations() {
     );
 
     /**
-     * Initialize sound system
-     */
-    const initializeSounds = useCallback(async () => {
-        if (preferences.soundEnabled) {
-            await soundManager.loadSounds();
-        }
-    }, [preferences.soundEnabled]);
-
-    /**
      * Trigger goal completion celebration
      */
     const celebrateGoalCompletion = useCallback(async () => {
-        if (
-            !preferences.hapticEnabled &&
-            !preferences.confettiEnabled &&
-            !preferences.soundEnabled
-        ) {
-            return;
+        if (preferences.confettiEnabled) {
+            triggerCelebration({ type: "goalCompletion" });
         }
-
-        await celebrationManager.celebrateGoalCompletion();
-    }, [preferences]);
+    }, [preferences.confettiEnabled, triggerCelebration]);
 
     /**
      * Trigger streak milestone celebration
      */
     const celebrateStreakMilestone = useCallback(
         async (days: number) => {
-            if (
-                !preferences.hapticEnabled &&
-                !preferences.confettiEnabled &&
-                !preferences.soundEnabled
-            ) {
-                return;
+            if (preferences.confettiEnabled) {
+                triggerCelebration({ type: "streakMilestone", milestoneDays: days });
             }
-
-            await celebrationManager.celebrateStreakMilestone(days);
         },
-        [preferences],
+        [preferences.confettiEnabled, triggerCelebration],
     );
 
     /**
      * Trigger daily completion celebration
      */
     const celebrateDailyComplete = useCallback(async () => {
-        if (
-            !preferences.hapticEnabled &&
-            !preferences.confettiEnabled &&
-            !preferences.soundEnabled
-        ) {
-            return;
+        if (preferences.confettiEnabled) {
+            triggerCelebration({ type: "dailyComplete" });
         }
-
-        await celebrationManager.celebrateDailyComplete();
-    }, [preferences]);
+    }, [preferences.confettiEnabled, triggerCelebration]);
 
     /**
      * Update individual preference
@@ -144,27 +116,10 @@ export function useCelebrations() {
         savePreferences(DEFAULT_PREFERENCES);
     }, [savePreferences]);
 
-    /**
-     * Cleanup resources
-     */
-    const cleanup = useCallback(async () => {
-        await celebrationManager.cleanup();
-    }, []);
-
     // Load preferences on mount
     useEffect(() => {
         loadPreferences();
     }, [loadPreferences]);
-
-    // Initialize sounds when preferences change
-    useEffect(() => {
-        initializeSounds();
-    }, [initializeSounds]);
-
-    // Update celebration manager when preferences change
-    useEffect(() => {
-        celebrationManager.setSoundEnabled(preferences.soundEnabled);
-    }, [preferences.soundEnabled]);
 
     return {
         preferences,
@@ -174,7 +129,6 @@ export function useCelebrations() {
         celebrateGoalCompletion,
         celebrateStreakMilestone,
         celebrateDailyComplete,
-        cleanup,
     };
 }
 

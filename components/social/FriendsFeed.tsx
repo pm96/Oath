@@ -316,8 +316,8 @@ export function FriendsFeed({ userId, onGoalSelect }: FriendsFeedProps) {
     );
 
     // Optimized render item function - Requirement: 11.4
-    const renderItem: ListRenderItem<GoalWithOwnerAndStatus> = useCallback(
-        ({ item }) => (
+    const renderItem = useCallback(
+        ({ item, index }: { item: GoalWithOwnerAndStatus; index: number }) => (
             <FriendGoalItem
                 goal={item}
                 currentUserId={userId}
@@ -421,7 +421,7 @@ export function FriendsFeed({ userId, onGoalSelect }: FriendsFeedProps) {
                     <EmptyState />
                 ) : (
                     <VStack spacing="md">
-                        {sortedGoals.map((item, index) => renderItem({ item, index, separators: {} }))}
+                        {sortedGoals.map((item, index) => renderItem({ item, index }))}
                     </VStack>
                 )}
             </VStack>

@@ -23,6 +23,15 @@ export interface User {
     createdAt: Date;
     searchableEmail: string; // Lowercase email for case-insensitive search
     searchableName: string; // Lowercase displayName for case-insensitive search
+    notificationSettings?: {
+        enabled?: boolean;
+        // Add other specific notification settings here
+    };
+    privacySettings?: {
+        isSearchable?: boolean;
+        defaultShare?: boolean;
+        // Add other privacy settings here
+    };
 }
 
 export interface FriendRequest {

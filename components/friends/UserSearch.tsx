@@ -89,7 +89,7 @@ export function UserSearch({ currentUserId, onUserSelect }: UserSearchProps) {
             setError(null);
 
             try {
-                const results = await searchUsers(debouncedQuery, userId);
+                const results = await searchUsers(debouncedQuery);
                 setSearchResults(results);
             } catch (err) {
                 const errorMessage =

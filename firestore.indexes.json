@@ -197,6 +197,22 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "privacySettings.isSearchable", "order": "ASCENDING" },
+        { "fieldPath": "searchableEmail", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "privacySettings.isSearchable", "order": "ASCENDING" },
+        { "fieldPath": "searchableName", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

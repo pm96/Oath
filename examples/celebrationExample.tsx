@@ -4,13 +4,9 @@
  */
 
 import { CelebrationSettings } from "@/components/habits/CelebrationSettings";
-import {
-    StreakCelebrationView,
-    StreakCelebrationViewRef,
-} from "@/components/habits/StreakCelebrationView";
 import { useCelebrationEffects } from "@/hooks/useCelebrations";
 import { useTheme } from "@/hooks/useTheme";
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 /**
@@ -18,7 +14,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
  */
 export function CelebrationExample() {
     const { theme } = useTheme();
-    const celebrationRef = useRef<StreakCelebrationViewRef>(null);
     const { celebrateGoalCompletion, celebrateStreakMilestone } =
         useCelebrationEffects();
     const [showSettings, setShowSettings] = useState(false);
@@ -26,18 +21,15 @@ export function CelebrationExample() {
     const handleGoalCompletion = async () => {
         // Trigger goal completion celebration
         await celebrateGoalCompletion();
-        celebrationRef.current?.celebrateCompletion();
     };
 
     const handleMilestone = async (days: number) => {
         // Trigger milestone celebration
         await celebrateStreakMilestone(days);
-        celebrationRef.current?.celebrateMilestone(days);
     };
 
     const handleDaily = () => {
-        // Trigger daily completion
-        celebrationRef.current?.celebrateDaily();
+        // Daily celebration is currently part of goal completion
     };
 
     return (
@@ -112,10 +104,6 @@ export function CelebrationExample() {
             {showSettings && <CelebrationSettings />}
 
             {/* Celebration Layer */}
-            <StreakCelebrationView
-                ref={celebrationRef}
-                style={styles.celebrationLayer}
-            />
         </View>
     );
 }

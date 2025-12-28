@@ -1,4 +1,5 @@
-import { auth } from "@/firebaseConfig";
+import { auth, app } from "@/firebaseConfig";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import {
     retryWithBackoff,
     validateDisplayName,
@@ -10,6 +11,9 @@ import {
     signOut as firebaseSignOut,
     User as FirebaseUser,
     signInWithEmailAndPassword,
+    EmailAuthProvider,
+    reauthenticateWithCredential,
+    updatePassword,
 } from "firebase/auth";
 import { getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { getUserDoc } from "./collections";
@@ -175,6 +179,59 @@ export async function userDocumentExists(userId: string): Promise<boolean> {
 }
 
 /**
+ * Reauthenticates the current user with their password.
+ */
+export async function reauthenticate(password: string): Promise<void> {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+        throw {
+            code: "auth/no-user",
+            message: "No user is currently signed in.",
+        } as AuthError;
+    }
+
+    try {
+        const credential = EmailAuthProvider.credential(user.email, password);
+        await reauthenticateWithCredential(user, credential);
+    } catch (error: any) {
+        throw {
+            code: error.code,
+            message: getAuthErrorMessage(error.code),
+        } as AuthError;
+    }
+}
+
+/**
+ * Changes the current user's password.
+ */
+export async function changePassword(newPassword: string): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) {
+        throw {
+            code: "auth/no-user",
+            message: "No user is currently signed in.",
+        } as AuthError;
+    }
+
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+        throw {
+            code: "auth/weak-password",
+            message: passwordError,
+        } as AuthError;
+    }
+
+    try {
+        await updatePassword(user, newPassword);
+    } catch (error: any) {
+        throw {
+            code: error.code,
+            message: getAuthErrorMessage(error.code),
+        } as AuthError;
+    }
+}
+
+/**
  * Convert Firebase error codes to user-friendly messages
  * Requirement 1.4: Display appropriate error messages
  */
@@ -200,5 +257,30 @@ function getAuthErrorMessage(errorCode: string): string {
             return "Invalid email or password.";
         default:
             return "Authentication failed. Please try again.";
+    }
+}
+
+const functions = getFunctions(app);
+
+/**
+ * Deletes the current user's account and all associated data.
+ */
+export async function deleteAccount(): Promise<void> {
+    try {
+        const deleteUser = httpsCallable<
+            Record<string, never>,
+            { success: boolean }
+        >(functions, "deleteAccount");
+
+        const result = await deleteUser({});
+
+        if (!result.data.success) {
+            throw new Error("Failed to delete account on the server.");
+        }
+    } catch (error: any) {
+        throw {
+            code: error.code || 'internal',
+            message: getAuthErrorMessage(error.code),
+        } as AuthError;
     }
 }

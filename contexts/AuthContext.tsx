@@ -1,5 +1,7 @@
 import { auth } from "@/firebaseConfig";
 import * as AuthService from "@/services/firebase/authService";
+import { User as FirestoreUser } from "@/services/firebase/collections";
+import { subscribeToUserData } from "@/services/firebase/socialService";
 import { User as FirebaseUser, onAuthStateChanged } from "firebase/auth";
 import React, { createContext, ReactNode, useEffect, useState } from "react";
 
@@ -10,8 +12,10 @@ import React, { createContext, ReactNode, useEffect, useState } from "react";
  * Requirements: 1.1, 1.2, 1.5
  */
 
+export type AppUser = FirebaseUser & Partial<FirestoreUser>;
+
 interface AuthContextType {
-    user: FirebaseUser | null;
+    user: AppUser | null;
     loading: boolean;
     signIn: (email: string, password: string) => Promise<FirebaseUser>;
     signUp: (
@@ -37,18 +41,36 @@ interface AuthProviderProps {
  * Requirement 1.5: Maintains session until explicit sign-out
  */
 export function AuthProvider({ children }: AuthProviderProps) {
-    const [user, setUser] = useState<FirebaseUser | null>(null);
+    const [user, setUser] = useState<AppUser | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Listen to auth state changes
-        // Requirement 1.5: Maintain session state
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-            setUser(firebaseUser);
-            setLoading(false);
+        // Listen to auth state changes and Firestore user document
+        const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+            if (firebaseUser) {
+                // User is signed in, now listen for Firestore data
+                const unsubscribeFirestore = subscribeToUserData(
+                    firebaseUser.uid,
+                    (firestoreUser) => {
+                        if (firestoreUser) {
+                            // Combine auth user and firestore user data
+                            setUser({ ...firebaseUser, ...firestoreUser });
+                        } else {
+                            // Auth user exists but no Firestore doc, might be an error state
+                            setUser(firebaseUser as AppUser);
+                        }
+                        setLoading(false);
+                    }
+                );
+                return unsubscribeFirestore;
+            } else {
+                // User is signed out
+                setUser(null);
+                setLoading(false);
+            }
         });
 
-        return unsubscribe;
+        return unsubscribeAuth;
     }, []);
 
     const value: AuthContextType = {

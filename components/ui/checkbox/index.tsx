@@ -33,7 +33,7 @@ const IconWrapper = React.forwardRef<
   React.ComponentRef<typeof PrimitiveIcon>,
   IPrimitiveIcon
 >(function IconWrapper({ ...props }, ref) {
-  return <UIIcon {...props} ref={ref} />;
+  return <UIIcon {...props} ref={ref as any} />;
 });
 
 const SCOPE = 'CHECKBOX';
