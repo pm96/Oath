@@ -94,7 +94,7 @@ export default function Home() {
 
     const getCurrentDate = () => {
         return new Date()
-            .toLocaleDateString("en-US", {
+            .toLocaleDateString(undefined, {
                 weekday: "long",
                 month: "long",
                 day: "numeric",
@@ -276,6 +276,14 @@ export default function Home() {
                         variant="outlined"
                         padding="md"
                         onPress={() => onOpenDetails(goal)}
+                        accessibilityActions={[
+                            { name: 'delete', label: 'Delete habit' }
+                        ]}
+                        onAccessibilityAction={(event) => {
+                            if (event.nativeEvent.actionName === 'delete') {
+                                onDelete(goal);
+                            }
+                        }}
                     >
                         <HStack justify="space-between" align="center">
                             <VStack style={{ flex: 1 }} spacing="xs">
@@ -340,29 +348,19 @@ export default function Home() {
     };
 
     const renderLoadingSkeleton = () => (
-        <View style={{ gap: 12 }}>
-            {[1, 2, 3].map((i) => (
-                <Card key={i} padding="md">
-                    <View
-                        style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                        }}
-                    >
-                        <View style={{ flex: 1 }}>
+        <VStack spacing="md">
+            {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i} padding="md" variant="outlined">
+                    <HStack justify="space-between" align="center">
+                        <VStack style={{ flex: 1 }} spacing="xs">
                             <LoadingSkeleton height={20} width="70%" />
-                            <LoadingSkeleton
-                                height={14}
-                                width="40%"
-                                style={{ marginTop: spacing.xs }}
-                            />
-                        </View>
-                        <LoadingSkeleton height={32} width={60} />
-                    </View>
+                            <LoadingSkeleton height={14} width="40%" />
+                        </VStack>
+                        <LoadingSkeleton height={32} width={60} style={{ borderRadius: 16 }} />
+                    </HStack>
                 </Card>
             ))}
-        </View>
+        </VStack>
     );
 
     return (

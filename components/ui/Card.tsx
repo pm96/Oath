@@ -1,8 +1,8 @@
 import { useThemeStyles } from "@/hooks/useTheme";
 import React from "react";
-import { TouchableOpacity, View, ViewStyle } from "react-native";
+import { TouchableOpacity, TouchableOpacityProps, View, ViewStyle } from "react-native";
 
-export interface CardProps {
+export interface CardProps extends TouchableOpacityProps {
     variant?: "default" | "elevated" | "outlined";
     padding?: "sm" | "md" | "lg";
     children: React.ReactNode;
@@ -16,6 +16,7 @@ export function Card({
     children,
     onPress,
     style,
+    ...props
 }: CardProps) {
     const { colors, spacing, borderRadius } = useThemeStyles();
 
@@ -76,11 +77,12 @@ export function Card({
                 onPress={onPress}
                 activeOpacity={0.95}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                {...props}
             >
                 {children}
             </TouchableOpacity>
         );
     }
 
-    return <View style={getCardStyles()}>{children}</View>;
+    return <View style={getCardStyles()} {...props}>{children}</View>;
 }

@@ -183,7 +183,64 @@ export default function FriendsScreen() {
             case "requests":
                 return <FriendRequests userId={user?.uid} />;
             case "search":
-                return <UserSearch currentUserId={user?.uid} />;
+                return (
+                    <VStack spacing="xl">
+                        {/* Find by Invite Code Section */}
+                        <Card variant="outlined" padding="lg">
+                            <VStack spacing="md">
+                                <Body weight="semibold">Find by Invite Code</Body>
+                                <Input
+                                    placeholder="Enter 6-digit code"
+                                    value={inviteCodeInput}
+                                    onChangeText={setInviteCodeInput}
+                                    maxLength={6}
+                                    autoCapitalize="characters"
+                                    autoCorrect={false}
+                                />
+                                <Button
+                                    variant="primary"
+                                    onPress={handleSearchByCode}
+                                    loading={isSearching}
+                                    disabled={isSearching}
+                                >
+                                    Find Friend
+                                </Button>
+                                {searchError && (
+                                    <Caption color="destructive">{searchError}</Caption>
+                                )}
+                                {searchResult && (
+                                    <Card
+                                        variant="elevated"
+                                        padding="md"
+                                        style={{ marginTop: spacing.md }}
+                                    >
+                                        <HStack justify="space-between" align="center">
+                                            <VStack>
+                                                <Body weight="semibold">
+                                                    {searchResult.displayName}
+                                                </Body>
+                                                <Caption color="muted">{searchResult.email}</Caption>
+                                            </VStack>
+                                            <Button
+                                                size="sm"
+                                                variant="success"
+                                                onPress={() => handleSendRequest(searchResult.uid)}
+                                            >
+                                                Add Friend
+                                            </Button>
+                                        </HStack>
+                                    </Card>
+                                )}
+                            </VStack>
+                        </Card>
+
+                        {/* Search by Name/Email Section */}
+                        <VStack spacing="md">
+                             <Body weight="semibold">Search by Name or Email</Body>
+                             <UserSearch currentUserId={user?.uid} />
+                        </VStack>
+                    </VStack>
+                );
             case "feed":
             default:
                 return <FriendsFeed userId={user?.uid || ""} />;
@@ -215,7 +272,7 @@ export default function FriendsScreen() {
                             }}
                         >
                             <HStack align="center" justify="space-between">
-                                <Body weight="semibold">Invite & Find Friends</Body>
+                                <Body weight="semibold">Share Your Invite Code</Body>
                                 <Animated.View style={{ transform: [{ rotate: rotation }] }}>
                                     <ChevronDown size={20} color={colors.primary} />
                                 </Animated.View>
@@ -228,7 +285,7 @@ export default function FriendsScreen() {
                             <Card
                                 variant="elevated"
                                 padding="lg"
-                                style={{ marginBottom: spacing.md }}
+                                style={{ marginBottom: spacing.xl }}
                             >
                                 <VStack spacing="md">
                                     <Body weight="semibold">Your Invite Code</Body>
@@ -253,57 +310,6 @@ export default function FriendsScreen() {
                                             </Button>
                                         </HStack>
                                     </HStack>
-                                </VStack>
-                            </Card>
-                            <Card
-                                variant="elevated"
-                                padding="lg"
-                                style={{ marginBottom: spacing.xl, marginTop: spacing.md }}
-                            >
-                                <VStack spacing="md">
-                                    <Body weight="semibold">Find by Invite Code</Body>
-                                    <Input
-                                        placeholder="Enter 6-digit code"
-                                        value={inviteCodeInput}
-                                        onChangeText={setInviteCodeInput}
-                                        maxLength={6}
-                                        autoCapitalize="characters"
-                                        autoCorrect={false}
-                                    />
-                                    <Button
-                                        variant="primary"
-                                        onPress={handleSearchByCode}
-                                        loading={isSearching}
-                                        disabled={isSearching}
-                                    >
-                                        Find Friend
-                                    </Button>
-                                    {searchError && (
-                                        <Caption color="destructive">{searchError}</Caption>
-                                    )}
-                                    {searchResult && (
-                                        <Card
-                                            variant="outlined"
-                                            padding="md"
-                                            style={{ marginTop: spacing.md }}
-                                        >
-                                            <HStack justify="space-between" align="center">
-                                                <VStack>
-                                                    <Body weight="semibold">
-                                                        {searchResult.displayName}
-                                                    </Body>
-                                                    <Caption color="muted">{searchResult.email}</Caption>
-                                                </VStack>
-                                                <Button
-                                                    size="sm"
-                                                    variant="success"
-                                                    onPress={() => handleSendRequest(searchResult.uid)}
-                                                >
-                                                    Add Friend
-                                                </Button>
-                                            </HStack>
-                                        </Card>
-                                    )}
                                 </VStack>
                             </Card>
                         </AnimatedView>
