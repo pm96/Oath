@@ -89,7 +89,7 @@ export function subscribeToPendingRequests(
     userId: string,
     onUpdate: (requests: any[]) => void,
     onError: (error: Error) => void,
-    onCountUpdate: (count: number) => void,
+    onCountUpdate?: (count: number) => void,
 ): () => void {
     const friendRequestsRef = collection(db, `artifacts/oath-app/friendRequests`);
     const q = query(
@@ -103,7 +103,9 @@ export function subscribeToPendingRequests(
         (snapshot) => {
             const requests = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
             onUpdate(requests);
-            onCountUpdate(snapshot.size);
+            if (onCountUpdate) {
+                onCountUpdate(snapshot.size);
+            }
         },
         (error) => {
             console.error("Error in pending requests subscription:", error);

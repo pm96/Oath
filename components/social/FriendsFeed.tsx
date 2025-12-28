@@ -420,26 +420,9 @@ export function FriendsFeed({ userId, onGoalSelect }: FriendsFeedProps) {
                 {sortedGoals.length === 0 ? (
                     <EmptyState />
                 ) : (
-                    <FlatList
-                        data={sortedGoals}
-                        renderItem={renderItem}
-                        keyExtractor={keyExtractor}
-                        showsVerticalScrollIndicator={false}
-                        refreshControl={
-                            <RefreshControl
-                                refreshing={refreshing}
-                                onRefresh={handleRefresh}
-                                tintColor={colors.primary}
-                                // Show different title when offline
-                                title={!isOnline ? "Offline - showing cached data" : undefined}
-                            />
-                        }
-                        contentContainerStyle={{
-                            paddingBottom: spacing.lg,
-                        }}
-                        // Performance optimizations - Requirement: 11.4
-                        {...flatListProps}
-                    />
+                    <VStack spacing="md">
+                        {sortedGoals.map((item, index) => renderItem({ item, index, separators: {} }))}
+                    </VStack>
                 )}
             </VStack>
 

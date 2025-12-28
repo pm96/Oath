@@ -13,15 +13,28 @@ import {
     Input,
     VStack,
 } from "@/components/ui";
+import { SafeAreaView } from "@/components/ui/safe-area-view";
 import { useAuth } from "@/hooks/useAuth";
 import { useThemeStyles } from "@/hooks/useTheme";
-import { findUserByInviteCode, PublicUserProfile, sendFriendRequest } from "@/services/firebase/friendService";
+import {
+    findUserByInviteCode,
+    PublicUserProfile,
+    sendFriendRequest,
+} from "@/services/firebase/friendService";
 import { HapticFeedback } from "@/utils/celebrations";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
-import { Copy, Share2 } from "lucide-react-native";
-import React, { useMemo, useState, useCallback } from "react";
-import { Clipboard, Platform, Share, Text, View, ScrollView } from "react-native";
-import { SafeAreaView } from "@/components/ui/safe-area-view";
+import { ChevronDown, Copy, Share2 } from "lucide-react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import {
+    Animated,
+    Clipboard,
+    Platform,
+    ScrollView,
+    Share,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 type TabType = "requests" | "feed" | "search";
 
@@ -35,9 +48,13 @@ export default function FriendsScreen() {
 
     const [activeTab, setActiveTab] = useState<TabType>("feed");
     const [inviteCodeInput, setInviteCodeInput] = useState("");
-    const [searchResult, setSearchResult] = useState<PublicUserProfile | null>(null);
+    const [searchResult, setSearchResult] = useState<PublicUserProfile | null>(
+        null,
+    );
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
+    const [isInviteSectionOpen, setInviteSectionOpen] = useState(false);
+    const rotationAnim = useRef(new Animated.Value(0)).current;
 
     const inviteCode = user?.uid?.slice(-6).toUpperCase() || "DEMO123";
 
@@ -45,6 +62,19 @@ export default function FriendsScreen() {
         () => `Join me on the app! Use my invite code: ${inviteCode}`,
         [inviteCode],
     );
+
+    const handleToggleInviteSection = () => {
+        setInviteSectionOpen(!isInviteSectionOpen);
+        Animated.spring(rotationAnim, {
+            toValue: isInviteSectionOpen ? 0 : 1,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const rotation = rotationAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ["0deg", "180deg"],
+    });
 
     const handleShareInviteCode = async () => {
         try {
@@ -100,17 +130,20 @@ export default function FriendsScreen() {
         }
     }, [inviteCodeInput]);
 
-    const handleSendRequest = useCallback(async (receiverId: string) => {
-        if (!user?.uid) return;
-        try {
-            await sendFriendRequest(user.uid, receiverId);
-            showSuccessToast("Friend request sent!");
-            setSearchResult(null); // Clear result after sending request
-            setInviteCodeInput("");
-        } catch (error: any) {
-            showErrorToast(error.message || "Failed to send friend request.");
-        }
-    }, [user?.uid]);
+    const handleSendRequest = useCallback(
+        async (receiverId: string) => {
+            if (!user?.uid) return;
+            try {
+                await sendFriendRequest(user.uid, receiverId);
+                showSuccessToast("Friend request sent!");
+                setSearchResult(null); // Clear result after sending request
+                setInviteCodeInput("");
+            } catch (error: any) {
+                showErrorToast(error.message || "Failed to send friend request.");
+            }
+        },
+        [user?.uid],
+    );
 
     const renderTabButton = (
         tab: TabType,
@@ -170,80 +203,111 @@ export default function FriendsScreen() {
                         </VStack>
                     </AnimatedView>
 
-                    <AnimatedView animation="slideInFromBottom" delay={100}>
+                    <TouchableOpacity
+                        onPress={handleToggleInviteSection}
+                        activeOpacity={0.8}
+                    >
                         <Card
                             variant="elevated"
                             padding="lg"
-                            style={{ marginBottom: spacing.md }}
+                            style={{
+                                marginBottom: isInviteSectionOpen ? spacing.md : spacing.xl,
+                            }}
                         >
-                            <VStack spacing="md">
-                                <Body weight="semibold">Your Invite Code</Body>
-                                <HStack align="center" justify="space-between">
-                                    <Heading size="lg" color="primary">
-                                        {inviteCode}
-                                    </Heading>
-                                    <HStack spacing="sm">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onPress={handleShareInviteCode}
-                                        >
-                                            <Share2 size={16} color={colors.primary} />
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onPress={handleCopyInviteCode}
-                                        >
-                                            <Copy size={16} color={colors.foreground} />
-                                        </Button>
-                                    </HStack>
-                                </HStack>
-                            </VStack>
+                            <HStack align="center" justify="space-between">
+                                <Body weight="semibold">Invite & Find Friends</Body>
+                                <Animated.View style={{ transform: [{ rotate: rotation }] }}>
+                                    <ChevronDown size={20} color={colors.primary} />
+                                </Animated.View>
+                            </HStack>
                         </Card>
-                    </AnimatedView>
+                    </TouchableOpacity>
 
-                     <AnimatedView animation="slideInFromBottom" delay={200}>
-                        <Card
-                            variant="elevated"
-                            padding="lg"
-                            style={{ marginBottom: spacing.xl }}
-                        >
-                            <VStack spacing="md">
-                                <Body weight="semibold">Find by Invite Code</Body>
-                                <Input
-                                    placeholder="Enter 6-digit code"
-                                    value={inviteCodeInput}
-                                    onChangeText={setInviteCodeInput}
-                                    maxLength={6}
-                                    autoCapitalize="characters"
-                                    autoCorrect={false}
-                                />
-                                <Button
-                                    variant="primary"
-                                    onPress={handleSearchByCode}
-                                    loading={isSearching}
-                                    disabled={isSearching}
-                                >
-                                    Find Friend
-                                </Button>
-                                {searchError && <Caption color="destructive">{searchError}</Caption>}
-                                {searchResult && (
-                                    <Card variant="outlined" padding="md" style={{marginTop: spacing.md}}>
-                                        <HStack justify="space-between" align="center">
-                                            <VStack>
-                                                <Body weight="semibold">{searchResult.displayName}</Body>
-                                                <Caption color="muted">{searchResult.email}</Caption>
-                                            </VStack>
-                                            <Button size="sm" variant="success" onPress={() => handleSendRequest(searchResult.uid)}>
-                                                Add Friend
+                    {isInviteSectionOpen && (
+                        <AnimatedView animation="fadeIn" duration={"normal"}>
+                            <Card
+                                variant="elevated"
+                                padding="lg"
+                                style={{ marginBottom: spacing.md }}
+                            >
+                                <VStack spacing="md">
+                                    <Body weight="semibold">Your Invite Code</Body>
+                                    <HStack align="center" justify="space-between">
+                                        <Heading size="lg" color="primary">
+                                            {inviteCode}
+                                        </Heading>
+                                        <HStack spacing="sm">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onPress={handleShareInviteCode}
+                                            >
+                                                <Share2 size={16} color={colors.primary} />
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onPress={handleCopyInviteCode}
+                                            >
+                                                <Copy size={16} color={colors.foreground} />
                                             </Button>
                                         </HStack>
-                                    </Card>
-                                )}
-                            </VStack>
-                        </Card>
-                    </AnimatedView>
+                                    </HStack>
+                                </VStack>
+                            </Card>
+                            <Card
+                                variant="elevated"
+                                padding="lg"
+                                style={{ marginBottom: spacing.xl, marginTop: spacing.md }}
+                            >
+                                <VStack spacing="md">
+                                    <Body weight="semibold">Find by Invite Code</Body>
+                                    <Input
+                                        placeholder="Enter 6-digit code"
+                                        value={inviteCodeInput}
+                                        onChangeText={setInviteCodeInput}
+                                        maxLength={6}
+                                        autoCapitalize="characters"
+                                        autoCorrect={false}
+                                    />
+                                    <Button
+                                        variant="primary"
+                                        onPress={handleSearchByCode}
+                                        loading={isSearching}
+                                        disabled={isSearching}
+                                    >
+                                        Find Friend
+                                    </Button>
+                                    {searchError && (
+                                        <Caption color="destructive">{searchError}</Caption>
+                                    )}
+                                    {searchResult && (
+                                        <Card
+                                            variant="outlined"
+                                            padding="md"
+                                            style={{ marginTop: spacing.md }}
+                                        >
+                                            <HStack justify="space-between" align="center">
+                                                <VStack>
+                                                    <Body weight="semibold">
+                                                        {searchResult.displayName}
+                                                    </Body>
+                                                    <Caption color="muted">{searchResult.email}</Caption>
+                                                </VStack>
+                                                <Button
+                                                    size="sm"
+                                                    variant="success"
+                                                    onPress={() => handleSendRequest(searchResult.uid)}
+                                                >
+                                                    Add Friend
+                                                </Button>
+                                            </HStack>
+                                        </Card>
+                                    )}
+                                </VStack>
+                            </Card>
+                        </AnimatedView>
+                    )}
 
                     <AnimatedView animation="slideInFromBottom" delay={300}>
                         <View
@@ -262,10 +326,7 @@ export default function FriendsScreen() {
                         </View>
                     </AnimatedView>
 
-                    <AnimatedView
-                        animation="fadeIn"
-                        delay={400}
-                    >
+                    <AnimatedView animation="fadeIn" delay={400}>
                         {renderTabContent()}
                     </AnimatedView>
                 </ScrollView>

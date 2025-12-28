@@ -331,26 +331,53 @@ export function FriendRequests({
     return (
         <VStack spacing="md">
             {/* Friend Requests List - Requirement 6.4: Real-time updates */}
-            <FlatList
-                data={pendingRequests}
-                renderItem={renderFriendRequest}
-                keyExtractor={(item) => item.id}
-                ListEmptyComponent={renderEmptyState}
-                contentContainerStyle={{ flexGrow: 1 }}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={colors.primary}
-                    />
-                }
-                // Performance optimizations
-                removeClippedSubviews={true}
-                maxToRenderPerBatch={10}
-                updateCellsBatchingPeriod={50}
-                initialNumToRender={10}
-                windowSize={10}
-            />
+            {pendingRequests.length === 0 ? renderEmptyState() : (
+                <VStack spacing="md">
+                    {pendingRequests.map((item, index) => {
+                        const isProcessing = processingRequestId === item.id;
+                        return (
+                            <Animated.View
+                                key={item.id}
+                                entering={FadeInDown.delay(index * 50).springify()}
+                                exiting={FadeOutUp.springify()}
+                            >
+                                <VStack
+                                    spacing="sm"
+                                    style={{ minHeight: 44 }} // Requirement 9.3: Minimum 44x44 touch target
+                                >
+                                    <VStack spacing="xs">
+                                        <Text>{item.senderName}</Text>
+                                        <Text>{item.senderEmail}</Text>
+                                    </VStack>
+
+                                    {/* Action Buttons - Requirements 2.4, 2.5, 9.3 */}
+                                    <View style={{ flexDirection: "row", gap: 8 }}>
+                                        <Button
+                                            size="sm"
+                                            variant="primary"
+                                            onPress={() => showConfirmation("accept", item)}
+                                            disabled={isProcessing}
+                                            style={{ minHeight: 44, minWidth: 44 }} // Requirement 9.3
+                                        >
+                                            {isProcessing ? "Processing..." : "Accept"}
+                                        </Button>
+
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onPress={() => showConfirmation("reject", item)}
+                                            disabled={isProcessing}
+                                            style={{ minHeight: 44, minWidth: 44 }} // Requirement 9.3
+                                        >
+                                            {isProcessing ? "Processing..." : "Reject"}
+                                        </Button>
+                                    </View>
+                                </VStack>
+                            </Animated.View>
+                        );
+                    })}
+                </VStack>
+            )}
 
             {/* Confirmation Dialog - Requirements 2.4, 2.5 */}
             <AlertDialog isOpen={confirmDialog.visible} onClose={hideConfirmation}>

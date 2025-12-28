@@ -305,20 +305,13 @@ export function UserSearch({ currentUserId, onUserSelect }: UserSearchProps) {
             />
 
             {/* Search Results - Requirement 9.2: Scrollable list with clear visual separation */}
-            <FlatList
-                data={searchResults}
-                renderItem={renderSearchResult}
-                keyExtractor={(item) => item.userId}
-                ListEmptyComponent={renderEmptyState}
-                contentContainerStyle={{ flexGrow: 1 }}
-                keyboardShouldPersistTaps="handled"
-                // Performance optimizations
-                removeClippedSubviews={true}
-                maxToRenderPerBatch={10}
-                updateCellsBatchingPeriod={50}
-                initialNumToRender={10}
-                windowSize={10}
-            />
+            {searchResults.length > 0 ? (
+                <View>
+                    {searchResults.map((item, index) => renderSearchResult({ item, index }))}
+                </View>
+            ) : (
+                renderEmptyState()
+            )}
         </View>
     );
 }
