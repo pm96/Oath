@@ -27,6 +27,7 @@ import {
     updateDoc,
     where,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 // Import Firebase config
 const firebaseConfig = require("../firebaseConfig.js");
@@ -35,6 +36,7 @@ const firebaseConfig = require("../firebaseConfig.js");
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
 
 const APP_ID = "oath-app";
 
@@ -313,22 +315,34 @@ async function testGoalCompletion() {
         isShared: true,
         createdAt: Timestamp.now(),
         redSince: null,
+        difficulty: "medium", // Required for completion
     };
 
     const goalsRef = collection(db, `artifacts/${APP_ID}/public/data/goals`);
     const goalDoc = await addDoc(goalsRef, goalData);
 
-    // Complete the goal
-    const completionTime = Timestamp.now();
-    const newDeadline = Timestamp.fromDate(
-        new Date(Date.now() + 24 * 60 * 60 * 1000),
-    );
+    // Complete the goal using Cloud Function
+    // Requirement: Use centralized logic (Step 1 of refactor)
+    console.log("  Calling recordHabitCompletion function...");
+    const recordHabitCompletion = httpsCallable(functions, 'recordHabitCompletion');
+    
+    try {
+        await recordHabitCompletion({
+            habitId: goalDoc.id,
+            completedAt: Date.now(),
+            timezone: "UTC",
+            notes: "E2E Test Completion",
+            difficulty: "medium"
+        });
+    } catch (e: any) {
+        console.warn("  Cloud Function call failed (function might not be deployed yet): " + e.message);
+        // If function fails (e.g. not deployed), we can't verify the state change.
+        // We throw to fail the test, alerting the user to deploy functions.
+        throw new Error("recordHabitCompletion failed. Ensure Cloud Functions are deployed.");
+    }
 
-    await updateDoc(goalDoc, {
-        latestCompletionDate: completionTime,
-        currentStatus: "Green",
-        nextDeadline: newDeadline,
-    });
+    // Wait for Firestore to update (Cloud Function -> Firestore)
+    await sleep(3000);
 
     // Verify updates
     const updatedGoal = await getDoc(goalDoc);
@@ -339,7 +353,7 @@ async function testGoalCompletion() {
     }
 
     if (updatedData.currentStatus !== "Green") {
-        throw new Error("Status should be Green after completion");
+        throw new Error(`Status should be Green after completion. Got: ${updatedData.currentStatus}`);
     }
 
     if (!updatedData.latestCompletionDate) {
@@ -347,6 +361,9 @@ async function testGoalCompletion() {
     }
 
     if (updatedData.nextDeadline.toMillis() <= Date.now()) {
+        // This might fail if the cloud function logic for next deadline is "End of Today" and we are "Today".
+        // But logic says "If completed today, deadline is tomorrow".
+        // So it should be in future.
         throw new Error("nextDeadline should be in the future");
     }
 

@@ -1,3 +1,4 @@
+import { NotificationInbox } from "@/components/notifications/NotificationInbox";
 import { HabitCreationModal, HabitInput } from "@/components/habits";
 import {
     AnimatedView,
@@ -9,6 +10,7 @@ import {
     HStack,
     Heading,
     LoadingSkeleton,
+    NotificationBadge,
     Progress,
     VStack,
 } from "@/components/ui";
@@ -17,12 +19,14 @@ import { useCelebration } from "@/contexts/CelebrationContext";
 import { useAuth } from "@/hooks/useAuth";
 import { GoalWithStreak, useGoals } from "@/hooks/useGoals";
 import { useThemeStyles } from "@/hooks/useTheme";
+import { getNudgesCollection } from "@/services/firebase/collections";
 import { GoalInput } from "@/services/firebase/goalService";
 import { HapticFeedback } from "@/utils/celebrations";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { router } from "expo-router";
-import { Check, Plus, Trash2 } from "lucide-react-native";
-import React, { useCallback, useRef, useState } from "react";
+import { onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
+import { Bell, Check, Plus, Trash2 } from "lucide-react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     Alert,
     Animated,
@@ -49,11 +53,36 @@ export default function Home() {
         refresh,
     } = useGoals();
     const [showCreateForm, setShowCreateForm] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [notificationCount, setNotificationCount] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
     const { colors, spacing } = useThemeStyles();
     const { triggerCelebration } = useCelebration();
 
     const openSwipeableRowRef = useRef<Swipeable | null>(null);
+
+    // Subscribe to unread notifications (recent nudges)
+    useEffect(() => {
+        if (!user?.uid) return;
+
+        const nudgesRef = getNudgesCollection();
+        const q = query(
+            nudgesRef,
+            where("receiverId", "==", user.uid),
+            orderBy("createdAt", "desc"),
+            limit(10)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setNotificationCount(snapshot.size);
+        }, (error) => {
+            console.error("Error listening for nudges:", error);
+        });
+
+        return () => unsubscribe();
+    }, [user?.uid]);
+
+    // ... (rest of the component)
 
     // Get current date for greeting
     const getCurrentGreeting = () => {
@@ -394,27 +423,60 @@ export default function Home() {
                                     </Heading>
                                 </Heading>
 
-                                {/* Floating Action Button */}
-                                <Button
-                                    variant="primary"
-                                    size="lg"
-                                    onPress={() => setShowCreateForm(true)}
-                                    style={{
-                                        width: 64,
-                                        height: 64,
-                                        borderRadius: 32,
-                                        backgroundColor: colors.primary,
-                                        shadowColor: colors.primary,
-                                        shadowOffset: { width: 0, height: 4 },
-                                        shadowOpacity: 0.3,
-                                        shadowRadius: 8,
-                                        elevation: 8,
-                                    }}
-                                    accessibilityLabel="Add a new habit"
-                                    accessibilityHint="Opens the create habit form"
-                                >
-                                    <Plus size={34} color="white" />
-                                </Button>
+
+
+                                {/* Header Actions */}
+                                <HStack spacing="sm">
+                                    <View style={{ position: "relative" }}>
+                                        <Button
+                                            variant="secondary"
+                                            size="lg"
+                                            onPress={() => setShowNotifications(true)}
+                                            style={{
+                                                width: 64,
+                                                height: 64,
+                                                borderRadius: 32,
+                                            }}
+                                            accessibilityLabel="Notifications"
+                                        >
+                                            <Bell size={24} color={colors.foreground} />
+                                        </Button>
+                                        {notificationCount > 0 && (
+                                            <NotificationBadge
+                                                count={notificationCount}
+                                                variant="destructive"
+                                                size="sm"
+                                                style={{
+                                                    position: "absolute",
+                                                    top: 4,
+                                                    right: 4,
+                                                }}
+                                            />
+                                        )}
+                                    </View>
+
+                                    {/* Floating Action Button */}
+                                    <Button
+                                        variant="primary"
+                                        size="lg"
+                                        onPress={() => setShowCreateForm(true)}
+                                        style={{
+                                            width: 64,
+                                            height: 64,
+                                            borderRadius: 32,
+                                            backgroundColor: colors.primary,
+                                            shadowColor: colors.primary,
+                                            shadowOffset: { width: 0, height: 4 },
+                                            shadowOpacity: 0.3,
+                                            shadowRadius: 8,
+                                            elevation: 8,
+                                        }}
+                                        accessibilityLabel="Add a new habit"
+                                        accessibilityHint="Opens the create habit form"
+                                    >
+                                        <Plus size={34} color="white" />
+                                    </Button>
+                                </HStack>
                             </View>
                         </View>
                     </AnimatedView>
@@ -505,6 +567,7 @@ export default function Home() {
                             </Card>
                         </AnimatedView>
                     )}
+
                 </ScrollView>
             </Container>
 
@@ -513,6 +576,12 @@ export default function Home() {
                 visible={showCreateForm}
                 onClose={() => setShowCreateForm(false)}
                 onSubmit={handleCreateGoal}
+            />
+            
+            {/* Notification Inbox */}
+            <NotificationInbox
+                visible={showNotifications}
+                onClose={() => setShowNotifications(false)}
             />
         </SafeAreaView>
     );
