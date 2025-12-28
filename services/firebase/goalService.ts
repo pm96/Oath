@@ -228,13 +228,9 @@ export async function completeGoal(goalId: string, goal: Goal): Promise<void> {
 
     try {
         const now = new Date();
-        const nextDeadline = calculateNextDeadline(
-            goal.frequency,
-            goal.targetDays,
-            now,
-        );
-
-        const recordResult = await recordHabitCompletion({
+        
+        // Server now handles the goal update (status, deadline, etc.) atomically
+        await recordHabitCompletion({
             habitId: goalId,
             completedAt: now.getTime(),
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -242,14 +238,8 @@ export async function completeGoal(goalId: string, goal: Goal): Promise<void> {
             difficulty: goal.difficulty,
         });
 
-        // Update goal status only after the completion is successfully recorded.
-        await updateGoal(goalId, {
-            latestCompletionDate: now,
-            nextDeadline: nextDeadline,
-            currentStatus: "Green",
-            redSince: null,
-            lastCompletionId: recordResult.completionId ?? null,
-        });
+        // We no longer manually update the goal doc here.
+        // The UI should react to real-time listeners or we can optimize locally if needed later.
     } catch (error) {
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(message);

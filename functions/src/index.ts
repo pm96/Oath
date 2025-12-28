@@ -6,12 +6,91 @@ import {
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { DocumentData, Timestamp } from "firebase-admin/firestore";
+import { addDays, set } from "date-fns";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 
 // Initialize Firebase Admin
 admin.initializeApp();
 
 const db = admin.firestore();
 const APP_ID = "oath-app";
+
+// ... (Rest of types)
+
+// ...
+
+function calculateNextDeadline(
+    frequency: "daily" | "weekly" | "3x_a_week",
+    targetDays: string[],
+    reference?: Date,
+    timezone: string = "UTC",
+): Date {
+    const now = reference || new Date();
+    
+    // Convert UTC 'now' to User's Zoned Time (as a Date object)
+    // This allows us to use date-fns functions like 'getDay' on it reflecting the user's wall clock.
+    const zonedNow = toZonedTime(now, timezone);
+    const currentDay = zonedNow.getDay();
+
+    const dayMap: Record<string, number> = {
+        Sunday: 0,
+        Monday: 1,
+        Tuesday: 2,
+        Wednesday: 3,
+        Thursday: 4,
+        Friday: 5,
+        Saturday: 6,
+    };
+
+    const targetDayNumbers = targetDays
+        .map((day) => dayMap[day] ?? -1)
+        .filter((day) => day >= 0)
+        .sort((a, b) => a - b);
+
+    let daysToAdd = 0;
+
+    if (frequency === "daily" || targetDayNumbers.length === 0) {
+        // Next deadline is end of today (23:59:59)
+        // If we just completed it, the 'reference' is the completion time.
+        // Usually, we want the deadline for the *next* occurrence.
+        // If this function is called AFTER completion, we want the next day.
+        // If this function is called to check status, we want today.
+        
+        // Assumption: 'reference' is the latest completion time.
+        // So we want the deadline for the NEXT day.
+        daysToAdd = 1;
+    } else {
+        // Weekly / 3x
+        let found = false;
+        for (let i = 1; i <= 7; i++) {
+            const checkDay = (currentDay + i) % 7;
+            if (targetDayNumbers.includes(checkDay)) {
+                daysToAdd = i;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            // Should not happen if targetDays has entries, but fallback:
+            daysToAdd = 1;
+        }
+    }
+
+    // Calculate the target date in Zoned Time
+    const zonedDeadline = addDays(zonedNow, daysToAdd);
+    
+    // Set to end of day (23:59:59.999) preserving the Zone
+    const zonedEndOfDay = set(zonedDeadline, {
+        hours: 23,
+        minutes: 59,
+        seconds: 59,
+        milliseconds: 999
+    });
+
+    // Convert back to UTC Timestamp
+    return fromZonedTime(zonedEndOfDay, timezone);
+}
 
 type StoredMilestone = {
     days: number;
@@ -206,8 +285,22 @@ export const recordHabitCompletion = onCall(async (request) => {
             };
 
             // --- 3. ALL WRITES ---
+            const nextDeadline = calculateNextDeadline(
+                goalData.frequency,
+                goalData.targetDays,
+                completionTimestamp.toDate(),
+                timezone
+            );
+
             transaction.set(newCompletionRef, completionData);
             transaction.set(streakRef, streakData);
+            transaction.update(goalRef, {
+                latestCompletionDate: completionTimestamp,
+                nextDeadline: admin.firestore.Timestamp.fromDate(nextDeadline),
+                currentStatus: "Green",
+                redSince: null,
+                lastCompletionId: newCompletionRef.id,
+            });
             transaction.set(
                 db.collection(`artifacts/${APP_ID}/auditLogs`).doc(),
                 auditData,
@@ -217,6 +310,12 @@ export const recordHabitCompletion = onCall(async (request) => {
                 completionId: newCompletionRef.id,
                 streak: streakData,
                 newMilestones,
+                // Return updated goal data for client convenience
+                goalUpdates: {
+                    latestCompletionDate: completionTimestamp,
+                    nextDeadline: admin.firestore.Timestamp.fromDate(nextDeadline),
+                    currentStatus: "Green",
+                }
             };
         });
 
@@ -317,22 +416,47 @@ export const undoHabitCompletion = onCall(async (request) => {
         return { success: false, error: "Completion document not found." };
     }
 
+    // We need to query for the *next* latest completion to restore Goal state.
+    // Query OUTSIDE the transaction for efficiency/simplicity, assuming low contention on personal goals.
+    const previousLatestQuery = completionsRef
+        .where("habitId", "==", habitId)
+        .where("userId", "==", userId)
+        .where("isActive", "!=", false)
+        .orderBy("isActive") // Firestore requires orderBy field to be in filter
+        .orderBy("completedAt", "desc")
+        .limit(2); // Fetch 2. One is the one we are deleting, one is the one before.
+
+    const previousLatestSnapshot = await previousLatestQuery.get();
+    let newLatestDate: Date | null = null;
+    let newLatestId: string | null = null;
+    let newLatestTimezone: string = "UTC";
+    
+    // Find the first doc that is NOT the one we are deleting
+    const validPrev = previousLatestSnapshot.docs.find(d => d.id !== completionDoc?.id);
+    
+    if (validPrev) {
+        const prevData = validPrev.data();
+        newLatestDate = prevData.completedAt.toDate();
+        newLatestId = validPrev.id;
+        newLatestTimezone = prevData.timezone || "UTC";
+    }
+
     await db.runTransaction(async (transaction) => {
-        if (!completionDoc) {
-            // This check is for type safety, though the above check should handle it.
-            return;
-        }
+        if (!completionDoc) return;
         transaction.delete(completionDoc.ref);
 
         const nextDeadline = calculateNextDeadline(
             goalData.frequency,
             goalData.targetDays,
+            newLatestDate || undefined,
+            newLatestTimezone
         );
+        
         transaction.update(goalRef, {
-            latestCompletionDate: null,
+            latestCompletionDate: newLatestDate ? admin.firestore.Timestamp.fromDate(newLatestDate) : null,
             nextDeadline: admin.firestore.Timestamp.fromDate(nextDeadline),
             currentStatus: "Yellow",
-            lastCompletionId: null,
+            lastCompletionId: newLatestId,
         });
     });
 
@@ -1028,64 +1152,7 @@ function calculateStreakFromCompletions(
     };
 }
 
-function calculateNextDeadline(
-    frequency: "daily" | "weekly" | "3x_a_week",
-    targetDays: string[],
-    reference?: Date,
-): Date {
-    const now = reference || new Date();
-    const currentDay = now.getDay();
 
-    const dayMap: Record<string, number> = {
-        Sunday: 0,
-        Monday: 1,
-        Tuesday: 2,
-        Wednesday: 3,
-        Thursday: 4,
-        Friday: 5,
-        Saturday: 6,
-    };
-
-    const targetDayNumbers = targetDays
-        .map((day) => dayMap[day] ?? -1)
-        .filter((day) => day >= 0)
-        .sort((a, b) => a - b);
-
-    if (frequency === "daily" || targetDayNumbers.length === 0) {
-        const deadline = new Date(now);
-        deadline.setHours(23, 59, 59, 999);
-        return deadline;
-    }
-
-    if (frequency === "weekly" || frequency === "3x_a_week") {
-        let daysToAdd = 0;
-        let found = false;
-
-        for (let i = 1; i <= 7; i++) {
-            const checkDay = (currentDay + i) % 7;
-            if (targetDayNumbers.includes(checkDay)) {
-                daysToAdd = i;
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) {
-            const firstTargetDay = targetDayNumbers[0];
-            daysToAdd = (firstTargetDay - currentDay + 7) % 7;
-            if (daysToAdd === 0) daysToAdd = 7;
-        }
-
-        const deadline = new Date(now);
-        deadline.setDate(deadline.getDate() + daysToAdd);
-        deadline.setHours(23, 59, 59, 999);
-        return deadline;
-    }
-
-    const fallback = new Date(now);
-    fallback.setHours(fallback.getHours() + 24);
-    return fallback;
-}
 
 /**
  * Scheduled Cloud Function that runs every hour to check goal deadlines

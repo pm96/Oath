@@ -30,9 +30,11 @@ service cloud.firestore {
 
     // User documents - allow read for search functionality, write only for own document
     match /artifacts/oath-app/users/{userId} {
-      // Allow read for any authenticated user (needed for user search functionality)
-      // This is a compromise between Requirements 7.1 and the need for friend search
-      allow read: if isAuthenticated();
+      // Allow read only for own profile or friends (Requirements 7.1)
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        isFriend(userId)
+      );
       // Allow write only for own document (Requirements 7.1)
       allow write: if isOwner(userId);
     }
@@ -65,8 +67,13 @@ service cloud.firestore {
          isFriend(resource.data.ownerId))
       );
       
-      // Allow write only if user is the owner (Requirements 7.3)
-      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      // Allow update only if user is the owner AND not modifying sensitive fields (Requirements 7.3)
+      allow update: if isAuthenticated() && 
+        resource.data.ownerId == request.auth.uid &&
+        (!request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['currentStatus', 'nextDeadline', 'redSince', 'latestCompletionDate', 'lastCompletionId']));
+      
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
       
       // Allow create only if user is setting themselves as owner (Requirements 7.3)
       allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
