@@ -102,11 +102,18 @@ export function EditHabitModal({
         <Modal visible={visible} onClose={onClose} title="Edit Habit" size="lg">
             <ScrollView showsVerticalScrollIndicator={false}>
                 <VStack spacing="xl" style={{ padding: 20 }}>
+                    {/* Description */}
                     <VStack spacing="sm">
                         <Body weight="semibold">Description</Body>
-                        <Input value={description} onChangeText={setDescription} editable={!loading} />
+                        <Input 
+                            placeholder="Habit description"
+                            value={description} 
+                            onChangeText={setDescription} 
+                            editable={!loading} 
+                        />
                     </VStack>
 
+                    {/* Frequency */}
                     <VStack spacing="sm">
                         <Body weight="semibold">Frequency</Body>
                         <HStack spacing="xs" style={{ flexWrap: "wrap" }}>
@@ -124,6 +131,7 @@ export function EditHabitModal({
                         </HStack>
                     </VStack>
 
+                    {/* Target Days */}
                     <VStack spacing="sm">
                         <Body weight="semibold">Which days?</Body>
                         <HStack spacing="xs" style={{ flexWrap: "wrap" }}>
@@ -141,9 +149,43 @@ export function EditHabitModal({
                         </HStack>
                     </VStack>
 
-                    <HStack spacing="md">
-                        <Button variant="outline" onPress={onClose} style={{ flex: 1 }}>Cancel</Button>
-                        <Button variant="primary" onPress={handleSubmit} loading={loading} style={{ flex: 1 }}>Save Changes</Button>
+                    {/* Difficulty */}
+                    <VStack spacing="sm">
+                        <Body weight="semibold">Difficulty Level</Body>
+                        <HStack spacing="xs" style={{ flexWrap: "wrap" }}>
+                            {DIFFICULTY_OPTIONS.map((opt) => (
+                                <Button
+                                    key={opt.key}
+                                    variant={difficulty === opt.key ? "primary" : "outline"}
+                                    size="sm"
+                                    onPress={() => setDifficulty(opt.key as any)}
+                                    style={{ marginBottom: 8 }}
+                                >
+                                    {opt.label}
+                                </Button>
+                            ))}
+                        </HStack>
+                    </VStack>
+
+                    {/* Action Buttons */}
+                    <HStack spacing="md" style={{ marginTop: spacing.md }}>
+                        <Button 
+                            variant="outline" 
+                            onPress={onClose} 
+                            style={{ flex: 1 }}
+                            disabled={loading}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="primary" 
+                            onPress={handleSubmit} 
+                            loading={loading} 
+                            disabled={loading}
+                            style={{ flex: 1 }}
+                        >
+                            Save Changes
+                        </Button>
                     </HStack>
                 </VStack>
             </ScrollView>

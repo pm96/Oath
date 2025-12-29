@@ -73,7 +73,7 @@ export function useNotifications() {
             responseListener.current = addNotificationResponseListener((response) => {
                 console.log("Notification tapped:", response);
                 // Handle notification tap - navigate to specific screen
-                const data = response.notification.request.content.data;
+                const data = response.notification.request.content.data as any;
 
                 if (data.type === "friend_request") {
                     // Navigate to Friends tab and pending requests section
@@ -89,7 +89,18 @@ export function useNotifications() {
                     // Navigate to Home tab when nudge notification is tapped
                     // Requirement 5.3: Navigate to Home tab when nudge notification is tapped
                     console.log("Nudge notification tapped:", data);
-                    router.push("/(tabs)/home");
+                    
+                    if (data.goalId || data.habitId) {
+                        router.push({
+                            pathname: "/habit-detail",
+                            params: { 
+                                habitId: data.goalId || data.habitId,
+                                habitName: data.goalDescription || "Habit Details"
+                            }
+                        });
+                    } else {
+                        router.push("/(tabs)/home");
+                    }
 
                     // Show toast with nudge sender and goal information
                     // Requirement 5.3: Show toast with nudge sender and goal information

@@ -10,8 +10,10 @@ import {
     fetchFriendsGoalsOnce,
     getFriendsGoals,
     subscribeToUserData,
+    toggleGoalHighFive,
 } from "../services/firebase/socialService";
 import { getUserFriendlyErrorMessage } from "../utils/errorHandling";
+import { showErrorToast } from "../utils/toast";
 import { calculateStatus } from "../utils/goalStatusCalculator";
 import { debounce } from "../utils/performance";
 import { useAuth } from "./useAuth";
@@ -337,6 +339,28 @@ export function useFriendsGoals() {
         }
     };
 
+    /**
+     * Toggle high-five on a friend's goal
+     */
+    const toggleHighFive = useCallback(
+        async (goalId: string) => {
+            if (!user) return;
+
+            const goal = sortedGoals.find((g) => g.id === goalId);
+            if (!goal) return;
+
+            const isHighFived = (goal.highFives || []).includes(user.uid);
+
+            try {
+                await toggleGoalHighFive(goalId, user.uid, isHighFived);
+            } catch (error) {
+                console.error("Failed to toggle high-five:", error);
+                showErrorToast("Failed to update high-five");
+            }
+        },
+        [user, sortedGoals],
+    );
+
     return {
         // Existing
         friendsGoals:
@@ -351,6 +375,7 @@ export function useFriendsGoals() {
         nudgeCooldowns,
         sendNudge: sendNudgeToFriend,
         canNudge: canNudgeGoal,
+        toggleHighFive,
         nudgeLoading: Array.from(nudgeLoading), // Convert Set to Array for easier consumption
 
         // Offline state - Requirement 6.5

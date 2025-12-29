@@ -14,9 +14,60 @@ import {
     EmailAuthProvider,
     reauthenticateWithCredential,
     updatePassword,
+    sendPasswordResetEmail,
+    sendEmailVerification,
 } from "firebase/auth";
 import { getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { getUserDoc } from "./collections";
+
+/**
+ * Send email verification to the current user
+ */
+export async function sendVerificationEmail(): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) {
+        throw {
+            code: "auth/no-user",
+            message: "No user is currently signed in.",
+        } as AuthError;
+    }
+
+    try {
+        await retryWithBackoff(
+            () => sendEmailVerification(user),
+            { maxAttempts: 2 },
+        );
+    } catch (error: any) {
+        throw {
+            code: error.code,
+            message: getAuthErrorMessage(error.code),
+        } as AuthError;
+    }
+}
+
+/**
+ * Send a password reset email to the user
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+    if (!email || !email.trim()) {
+        throw {
+            code: "auth/invalid-email",
+            message: "Please enter your email address.",
+        } as AuthError;
+    }
+
+    try {
+        await retryWithBackoff(
+            () => sendPasswordResetEmail(auth, email.trim()),
+            { maxAttempts: 2 },
+        );
+    } catch (error: any) {
+        throw {
+            code: error.code,
+            message: getAuthErrorMessage(error.code),
+        } as AuthError;
+    }
+}
 
 /**
  * AuthService
@@ -129,6 +180,7 @@ export async function signUp(
                     email: trimmedEmail,
                     shameScore: 0,
                     friends: [],
+                    blockedUsers: [],
                     fcmToken: null,
                     createdAt: serverTimestamp(),
                     searchableEmail: trimmedEmail.toLowerCase(),
@@ -137,6 +189,13 @@ export async function signUp(
                 }),
             { maxAttempts: 3 },
         );
+
+        // Send email verification
+        try {
+            await sendEmailVerification(user);
+        } catch (error) {
+            console.error("Failed to send initial verification email:", error);
+        }
 
         return user;
     } catch (error: any) {
@@ -277,6 +336,9 @@ export async function deleteAccount(): Promise<void> {
         if (!result.data.success) {
             throw new Error("Failed to delete account on the server.");
         }
+
+        // Explicitly sign out locally to trigger onAuthStateChanged
+        await firebaseSignOut(auth);
     } catch (error: any) {
         throw {
             code: error.code || 'internal',

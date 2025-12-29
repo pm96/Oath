@@ -69,6 +69,7 @@ export interface Goal {
     redSince: Date | null;
     difficulty: "easy" | "medium" | "hard";
     lastCompletionId?: string | null;
+    highFives?: string[]; // Array of user IDs who high-fived
 }
 
 /**

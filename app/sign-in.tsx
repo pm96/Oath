@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Modal, VStack } from "@/components/ui";
 import { Heading, Text } from "@/components/ui/Text";
 import { useAuth } from "@/hooks/useAuth";
 import { validateEmail, validatePassword } from "@/utils/errorHandling";
-import { showErrorToast } from "@/utils/toast";
+import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Redirect, router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View, TouchableOpacity } from "react-native";
 
 /**
  * SignInScreen
@@ -17,10 +18,15 @@ import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
  * Protected route: Redirects authenticated users to home
  */
 export default function SignIn() {
-    const { signIn, user, loading: authLoading } = useAuth();
+    const { signIn, sendPasswordReset, user, loading: authLoading } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
+    
+    // Password reset state
+    const [showResetModal, setShowResetModal] = useState(false);
+    const [resetEmail, setResetEmail] = useState("");
+    const [resetLoading, setResetLoading] = useState(false);
 
     // Redirect to home if already authenticated
     if (!authLoading && user) {
@@ -67,6 +73,26 @@ export default function SignIn() {
         }
     };
 
+    const handleResetPassword = async () => {
+        const error = validateEmail(resetEmail);
+        if (error) {
+            showErrorToast(error, "Invalid Email");
+            return;
+        }
+
+        setResetLoading(true);
+        try {
+            await sendPasswordReset(resetEmail.trim());
+            showSuccessToast("Password reset email sent! Check your inbox.");
+            setShowResetModal(false);
+            setResetEmail("");
+        } catch (error: any) {
+            showErrorToast(error.message || "Failed to send reset email");
+        } finally {
+            setResetLoading(false);
+        }
+    };
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -97,14 +123,27 @@ export default function SignIn() {
                             editable={!loading}
                         />
 
-                        <Input
-                            placeholder="Password"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry
-                            autoComplete="password"
-                            editable={!loading}
-                        />
+                        <View style={{ gap: 8 }}>
+                            <Input
+                                placeholder="Password"
+                                value={password}
+                                onChangeText={setPassword}
+                                secureTextEntry
+                                autoComplete="password"
+                                editable={!loading}
+                            />
+                            <TouchableOpacity 
+                                onPress={() => {
+                                    setResetEmail(email);
+                                    setShowResetModal(true);
+                                }}
+                                style={{ alignSelf: 'flex-end' }}
+                            >
+                                <Text style={{ fontSize: 14, color: '#3b82f6', fontWeight: '500' }}>
+                                    Forgot Password?
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
 
                         <Button onPress={handleSignIn} disabled={loading}>
                             {loading ? "Signing in..." : "Sign In"}
@@ -120,6 +159,41 @@ export default function SignIn() {
                     </View>
                 </View>
             </ScrollView>
+
+            {/* Password Reset Modal */}
+            <Modal
+                visible={showResetModal}
+                onClose={() => !resetLoading && setShowResetModal(false)}
+                title="Reset Password"
+            >
+                <VStack spacing="lg" style={{ padding: 20 }}>
+                    <Text>
+                        Enter your email address and we'll send you a link to reset your password.
+                    </Text>
+                    <Input
+                        placeholder="Email Address"
+                        value={resetEmail}
+                        onChangeText={setResetEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        editable={!resetLoading}
+                    />
+                    <Button 
+                        onPress={handleResetPassword} 
+                        loading={resetLoading}
+                        disabled={!resetEmail}
+                    >
+                        Send Reset Link
+                    </Button>
+                    <Button 
+                        variant="ghost" 
+                        onPress={() => setShowResetModal(false)}
+                        disabled={resetLoading}
+                    >
+                        Cancel
+                    </Button>
+                </VStack>
+            </Modal>
         </KeyboardAvoidingView>
     );
 }

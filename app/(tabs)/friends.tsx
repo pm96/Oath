@@ -22,11 +22,12 @@ import {
     findUserByInviteCode,
     PublicUserProfile,
     sendFriendRequest,
+    subscribeToPendingRequests,
 } from "@/services/firebase/friendService";
 import { HapticFeedback } from "@/utils/celebrations";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import { Copy, Share2 } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Clipboard, Platform, ScrollView, Share, View } from "react-native";
 
 type TabType = "network" | "feed" | "add" | "board";
@@ -46,6 +47,19 @@ export default function FriendsScreen() {
     );
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
+    const [pendingCount, setPendingCount] = useState(0);
+
+    // Subscribe to pending requests for internal badge
+    useEffect(() => {
+        if (!user?.uid) return;
+        const unsubscribe = subscribeToPendingRequests(
+            user.uid,
+            () => {},
+            () => {},
+            (count: number) => setPendingCount(count)
+        );
+        return () => unsubscribe();
+    }, [user?.uid]);
 
     const inviteCode = user?.uid?.slice(-6).toUpperCase() || "DEMO123";
 
@@ -103,8 +117,6 @@ export default function FriendsScreen() {
             }
         } catch (error: any) {
             setSearchError(error.message || "An error occurred during search.");
-        } finally {
-            setIsSearching(false);
         }
     }, [inviteCodeInput]);
 
@@ -129,6 +141,8 @@ export default function FriendsScreen() {
         icon?: React.ReactNode,
     ) => {
         const isActive = activeTab === tab;
+        const showBadge = tab === "network" && pendingCount > 0;
+
         return (
             <Button
                 variant={isActive ? "primary" : "outline"}
@@ -140,6 +154,7 @@ export default function FriendsScreen() {
                     borderColor: isActive ? colors.primary : colors.border,
                     borderRadius: 12,
                     height: 40,
+                    position: 'relative',
                 }}
             >
                 <HStack align="center" spacing="xs">
@@ -147,14 +162,27 @@ export default function FriendsScreen() {
                     <Body
                         weight={isActive ? "semibold" : "medium"}
                         style={{
-                            color: isActive
-                                ? colors.primaryForeground
-                                : colors.mutedForeground,
+                            color: isActive ? colors.primaryForeground : colors.mutedForeground,
                             fontSize: 13,
                         }}
                     >
                         {label}
                     </Body>
+                    {showBadge && (
+                        <View 
+                            style={{ 
+                                width: 8, 
+                                height: 8, 
+                                borderRadius: 4, 
+                                backgroundColor: colors.destructive,
+                                position: 'absolute',
+                                top: -2,
+                                right: -4,
+                                borderWidth: 1,
+                                borderColor: colors.background
+                            }} 
+                        />
+                    )}
                 </HStack>
             </Button>
         );
@@ -177,20 +205,24 @@ export default function FriendsScreen() {
             case "network":
                 return (
                     <VStack spacing="xl" style={{ paddingBottom: spacing.xl }}>
-                        <VStack spacing="md">
-                            <HStack align="center" justify="space-between">
-                                <Heading size="md">Friend Requests</Heading>
-                                {user?.uid && <Caption color="muted">Pending actions</Caption>}
-                            </HStack>
-                            <FriendRequests userId={user?.uid} />
-                        </VStack>
+                        {pendingCount > 0 && (
+                            <VStack spacing="md">
+                                <HStack align="center" spacing="sm">
+                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.destructive }} />
+                                    <Heading size="md">Action Required</Heading>
+                                </HStack>
+                                <FriendRequests userId={user?.uid} />
+                            </VStack>
+                        )}
 
                         <VStack spacing="md">
-                            <Heading size="md">My Friends</Heading>
+                            <Heading size="md">Accountability Circle</Heading>
+                            <Caption color="muted">People you are supporting and who support you</Caption>
                             <FriendList userId={user?.uid} />
                         </VStack>
                     </VStack>
                 );
+
             case "add":
                 return (
                     <VStack spacing="xl" style={{ paddingBottom: spacing.xl }}>

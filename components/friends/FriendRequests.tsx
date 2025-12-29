@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { VStack } from "@/components/ui/Stack";
 import { Heading, Text } from "@/components/ui/Text";
+import { Avatar, Body, Caption, Card, HStack } from "@/components/ui";
 import { useThemeStyles } from "@/contexts/ThemeContext";
 import { useAuth } from "@/hooks/useAuth";
 import { FriendRequest } from "@/services/firebase/collections";
@@ -341,38 +342,40 @@ export function FriendRequests({
                                 entering={FadeInDown.delay(index * 50).springify()}
                                 exiting={FadeOutUp.springify()}
                             >
-                                <VStack
-                                    spacing="sm"
-                                    style={{ minHeight: 44 }} // Requirement 9.3: Minimum 44x44 touch target
-                                >
-                                    <VStack spacing="xs">
-                                        <Text>{item.senderName}</Text>
-                                        <Text>{item.senderEmail}</Text>
-                                    </VStack>
+                                <Card variant="elevated" padding="md" style={{ marginBottom: 4 }}>
+                                    <HStack spacing="md" align="center">
+                                        <Avatar 
+                                            fallback={item.senderName[0].toUpperCase()} 
+                                            size="md" 
+                                        />
+                                        <VStack style={{ flex: 1 }} spacing="xs">
+                                            <Body weight="semibold">{item.senderName}</Body>
+                                            <Caption color="muted">{item.senderEmail}</Caption>
+                                        </VStack>
 
-                                    {/* Action Buttons - Requirements 2.4, 2.5, 9.3 */}
-                                    <View style={{ flexDirection: "row", gap: 8 }}>
-                                        <Button
-                                            size="sm"
-                                            variant="primary"
-                                            onPress={() => showConfirmation("accept", item)}
-                                            disabled={isProcessing}
-                                            style={{ minHeight: 44, minWidth: 44 }} // Requirement 9.3
-                                        >
-                                            {isProcessing ? "Processing..." : "Accept"}
-                                        </Button>
+                                        <HStack spacing="xs">
+                                            <Button
+                                                size="sm"
+                                                variant="primary"
+                                                onPress={() => showConfirmation("accept", item)}
+                                                disabled={isProcessing}
+                                                style={{ height: 36, minHeight: 36, borderRadius: 18 }}
+                                            >
+                                                {isProcessing ? "..." : "Accept"}
+                                            </Button>
 
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onPress={() => showConfirmation("reject", item)}
-                                            disabled={isProcessing}
-                                            style={{ minHeight: 44, minWidth: 44 }} // Requirement 9.3
-                                        >
-                                            {isProcessing ? "Processing..." : "Reject"}
-                                        </Button>
-                                    </View>
-                                </VStack>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onPress={() => showConfirmation("reject", item)}
+                                                disabled={isProcessing}
+                                                style={{ height: 36, minHeight: 36, borderRadius: 18 }}
+                                            >
+                                                {isProcessing ? "..." : "X"}
+                                            </Button>
+                                        </HStack>
+                                    </HStack>
+                                </Card>
                             </Animated.View>
                         );
                     })}

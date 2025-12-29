@@ -143,6 +143,67 @@ export async function removeFCMToken(userId: string): Promise<void> {
 }
 
 /**
+ * Schedule a local notification reminder for a habit
+ * 
+ * @param habitId - Unique ID of the habit
+ * @param description - Habit description
+ * @param deadline - Date object for the deadline
+ */
+export async function scheduleLocalHabitReminder(
+    habitId: string,
+    description: string,
+    deadline: Date
+): Promise<string | null> {
+    try {
+        // Calculate reminder time (1 hour before deadline)
+        const reminderTime = new Date(deadline.getTime() - 60 * 60 * 1000);
+        
+        // If deadline is already within an hour or past, don't schedule
+        if (reminderTime.getTime() <= Date.now()) {
+            console.log(`Skipping local reminder for ${description} as it's too close to deadline.`);
+            return null;
+        }
+
+        const identifier = await Notifications.scheduleNotificationAsync({
+            content: {
+                title: "⚠️ Goal Deadline Approaching!",
+                body: `Don't forget: ${description}. You have 1 hour left!`,
+                data: { habitId },
+                sound: true,
+                badge: 1,
+            },
+            trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: reminderTime,
+            },
+        });
+
+        console.log(`Scheduled local reminder for ${description} at ${reminderTime.toLocaleTimeString()}`);
+        return identifier;
+    } catch (error) {
+        console.error("Error scheduling local reminder:", error);
+        return null;
+    }
+}
+
+/**
+ * Cancel all local notifications for a specific habit
+ * @param habitId - The ID of the habit
+ */
+export async function cancelHabitReminders(habitId: string): Promise<void> {
+    try {
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        for (const notification of scheduled) {
+            if (notification.content.data?.habitId === habitId) {
+                await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+            }
+        }
+    } catch (error) {
+        console.error("Error cancelling habit reminders:", error);
+    }
+}
+
+/**
  * Add notification received listener
  *
  * @param callback - Function to call when notification is received

@@ -156,38 +156,23 @@ export function subscribeToPendingRequests(
 }
 
 /**
- * Accepts a friend request.
+ * Accepts a friend request via Cloud Function.
  * @param requestId The ID of the friend request to accept.
- * @param userId The ID of the user accepting the request.
+ * @param userId The ID of the user accepting the request (unused now but kept for signature).
  */
 export async function acceptFriendRequest(requestId: string, userId: string): Promise<void> {
-    const friendRequestRef = doc(db, `artifacts/oath-app/friendRequests`, requestId);
-
     try {
-        const requestDoc = await getDoc(friendRequestRef);
-        if (!requestDoc.exists()) {
-            throw new Error("Friend request not found.");
-        }
+        const callable = httpsCallable<
+            { requestId: string },
+            { success: boolean }
+        >(functions, "acceptFriendRequest");
 
-        const requestData = requestDoc.data();
-        if (requestData?.receiverId !== userId) {
-            throw new Error("You are not authorized to accept this request.");
-        }
-        if (requestData?.status !== "pending") {
-            throw new Error("Friend request is not pending.");
-        }
+        const result = await callable({ requestId });
 
-        const senderId = requestData.senderId;
-        const senderUserRef = doc(db, `artifacts/oath-app/users`, senderId);
-        const receiverUserRef = doc(db, `artifacts/oath-app/users`, userId);
-
-        // Use a transaction to ensure atomicity
-        await runTransaction(db, async (transaction: Transaction) => {
-            transaction.update(friendRequestRef, { status: "accepted", updatedAt: serverTimestamp() });
-            transaction.update(senderUserRef, { friends: arrayUnion(userId) });
-            transaction.update(receiverUserRef, { friends: arrayUnion(senderId) });
-        });
-    } catch (error) {
+        if (!result.data.success) {
+            throw new Error("Failed to accept request on the server.");
+        }
+    } catch (error: any) {
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(`Failed to accept friend request: ${message}`);
     }
@@ -223,49 +208,26 @@ export async function rejectFriendRequest(requestId: string, userId: string): Pr
 }
 
 /**
- * Blocks a user. Adds them to blockedUsers array and removes from friends list.
- * @param currentUserId The ID of the current user.
- * @param targetUserId The ID of the user to block.
+ * Blocks a user via Cloud Function.
  */
 export async function blockUser(currentUserId: string, targetUserId: string): Promise<void> {
-    const currentUserRef = doc(db, `artifacts/oath-app/users`, currentUserId);
-    const targetUserRef = doc(db, `artifacts/oath-app/users`, targetUserId);
-
     try {
-        await runTransaction(db, async (transaction: Transaction) => {
-            // Add targetUserId to current user's blockedUsers array
-            transaction.update(currentUserRef, { 
-                blockedUsers: arrayUnion(targetUserId),
-                friends: arrayRemove(targetUserId)
-            });
-            // Remove currentUserId from target's friends array (the rules will handle the rest)
-            transaction.update(targetUserRef, { 
-                friends: arrayRemove(currentUserId) 
-            });
-        });
-    } catch (error) {
+        const callable = httpsCallable<{ targetUserId: string }, { success: boolean }>(functions, "blockUser");
+        await callable({ targetUserId });
+    } catch (error: any) {
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(`Failed to block user: ${message}`);
     }
 }
 
 /**
- * Removes a friend from both users' friends lists.
- * @param currentUserId The ID of the current user.
- * @param friendId The ID of the friend to remove.
+ * Removes a friend via Cloud Function.
  */
 export async function removeFriend(currentUserId: string, friendId: string): Promise<void> {
-    const currentUserRef = doc(db, `artifacts/oath-app/users`, currentUserId);
-    const friendUserRef = doc(db, `artifacts/oath-app/users`, friendId);
-
     try {
-        await runTransaction(db, async (transaction: Transaction) => {
-            // Remove friendId from current user's friends array
-            transaction.update(currentUserRef, { friends: arrayRemove(friendId) });
-            // Remove currentUserId from friend's friends array
-            transaction.update(friendUserRef, { friends: arrayRemove(currentUserId) });
-        });
-    } catch (error) {
+        const callable = httpsCallable<{ friendId: string }, { success: boolean }>(functions, "removeFriend");
+        await callable({ friendId });
+    } catch (error: any) {
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(`Failed to remove friend: ${message}`);
     }

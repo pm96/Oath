@@ -5,6 +5,7 @@ import {
     retryWithBackoff,
 } from "@/utils/errorHandling";
 import {
+    arrayRemove,
     arrayUnion,
     getDoc,
     getDocs,
@@ -14,18 +15,36 @@ import {
     where,
 } from "firebase/firestore";
 import {
+    getGoalDoc,
     getGoalsCollection,
     getUserDoc,
     GoalWithOwner,
     User,
 } from "./collections";
 
+// ... (rest of imports)
+
 /**
- * SocialService
- *
- * Handles social features including friends management and viewing friends' goals
- * Requirements: 3.1, 3.3, 6.1, 6.2
+ * Toggle high-five reaction on a friend's goal
+ * @param goalId - The ID of the goal
+ * @param userId - The ID of the user giving the high-five
+ * @param isHighFived - Whether the user has already high-fived the goal
  */
+export async function toggleGoalHighFive(
+    goalId: string,
+    userId: string,
+    isHighFived: boolean,
+): Promise<void> {
+    try {
+        const goalDocRef = getGoalDoc(goalId);
+        await updateDoc(goalDocRef, {
+            highFives: isHighFived ? arrayRemove(userId) : arrayUnion(userId),
+        });
+    } catch (error) {
+        const message = getUserFriendlyErrorMessage(error);
+        throw new Error(`Failed to update high-five: ${message}`);
+    }
+}
 
 /**
  * Get friends' goals with real-time updates
@@ -107,6 +126,7 @@ export function getFriendsGoals(
                             difficulty: data.difficulty || "medium",
                             ownerName: ownerData?.displayName || "Unknown",
                             ownerShameScore: ownerData?.shameScore || 0,
+                            highFives: data.highFives || [],
                         };
                     }),
                 )
@@ -207,6 +227,7 @@ export async function fetchFriendsGoalsOnce(
                     difficulty: data.difficulty || "medium",
                     ownerName: ownerData?.displayName || "Unknown",
                     ownerShameScore: ownerData?.shameScore || 0,
+                    highFives: data.highFives || [],
                 });
             }
         }

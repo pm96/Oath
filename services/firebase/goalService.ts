@@ -20,6 +20,7 @@ import {
 } from "./cloudFunctions";
 import { getGoalDoc, getGoalsCollection, Goal } from "./collections";
 import { streakService } from "./streakService";
+import { scheduleLocalHabitReminder, cancelHabitReminders } from "./notificationService";
 /**
  * Input type for creating a new goal
  */
@@ -153,6 +154,13 @@ export async function createGoal(
 
             const docRef = await addDoc(goalsCollection, goalData);
 
+            // Schedule local reminder
+            try {
+                await scheduleLocalHabitReminder(docRef.id, goalInput.description, nextDeadline);
+            } catch (err) {
+                console.warn("Failed to schedule local reminder:", err);
+            }
+
             // Initialize streak tracking for the new habit
             try {
                 await streakService.initializeHabitStreak(docRef.id, userId);
@@ -238,8 +246,18 @@ export async function completeGoal(goalId: string, goal: Goal): Promise<void> {
             difficulty: goal.difficulty,
         });
 
-        // We no longer manually update the goal doc here.
-        // The UI should react to real-time listeners or we can optimize locally if needed later.
+        // Manage local reminders
+        try {
+            await cancelHabitReminders(goalId);
+            const nextDeadline = calculateNextDeadline(
+                goal.frequency,
+                goal.targetDays,
+                now,
+            );
+            await scheduleLocalHabitReminder(goalId, goal.description, nextDeadline);
+        } catch (err) {
+            console.warn("Failed to manage local reminders:", err);
+        }
     } catch (error) {
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(message);
@@ -274,6 +292,11 @@ export async function deleteGoal(goalId: string): Promise<void> {
 
     try {
         await deleteHabit({ habitId: goalId });
+        try {
+            await cancelHabitReminders(goalId);
+        } catch (err) {
+            console.warn("Failed to cancel local reminders:", err);
+        }
     } catch (error) {
         const message = getUserFriendlyErrorMessage(error);
         throw new Error(`Failed to delete habit: ${message}`);

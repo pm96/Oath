@@ -38,12 +38,183 @@ import {
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 
+interface GoalCardProps {
+    goal: GoalWithStreak;
+    index: number;
+    colors: any;
+    spacing: any;
+    onDelete: (goal: GoalWithStreak) => void;
+    onComplete: (goalId: string) => void;
+    onUndo: (goal: GoalWithStreak) => void;
+    onOpenDetails: (goal: GoalWithStreak) => void;
+    onSwipeableOpen: (ref: Swipeable) => void;
+}
+
+const GoalCard = React.memo(({
+    goal,
+    index,
+    colors,
+    spacing,
+    onDelete,
+    onComplete,
+    onUndo,
+    onOpenDetails,
+    onSwipeableOpen,
+}: GoalCardProps) => {
+    const today = new Date().toDateString();
+    const isCompletedToday =
+        goal.latestCompletionDate &&
+        new Date(goal.latestCompletionDate).toDateString() === today;
+    const currentStreakCount = goal.currentStreakCount ?? 0;
+    const bestStreakCount = goal.bestStreakCount ?? 0;
+    const rowRef = useRef<Swipeable>(null);
+
+    const renderRightActions = (
+        progress: Animated.AnimatedInterpolation<number>,
+        dragX: Animated.AnimatedInterpolation<number>,
+    ) => {
+        const trans = dragX.interpolate({
+            inputRange: [-80, 0],
+            outputRange: [0, 80],
+            extrapolate: "clamp",
+        });
+        return (
+            <TouchableOpacity
+                onPress={() => onDelete(goal)}
+                style={{ width: 80, justifyContent: "center", alignItems: "center" }}
+            >
+                <Animated.View
+                    style={{
+                        backgroundColor: colors.destructive,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        width: 60,
+                        height: 60,
+                        borderRadius: 30,
+                        transform: [{ translateX: trans }],
+                    }}
+                >
+                    <Trash2 size={24} color="white" />
+                </Animated.View>
+            </TouchableOpacity>
+        );
+    };
+
+    return (
+        <Swipeable
+            ref={rowRef}
+            friction={2}
+            rightThreshold={40}
+            renderRightActions={renderRightActions}
+            onSwipeableOpen={() => {
+                if (rowRef.current) {
+                    onSwipeableOpen(rowRef.current);
+                }
+            }}
+        >
+            <AnimatedView
+                key={goal.id}
+                animation="slideInFromBottom"
+                delay={index * 100}
+            >
+                <Card
+                    style={{ marginBottom: 4 }}
+                    variant="outlined"
+                    padding="md"
+                    onPress={() => onOpenDetails(goal)}
+                    accessibilityActions={[
+                        { name: 'delete', label: 'Delete habit' }
+                    ]}
+                    onAccessibilityAction={(event) => {
+                        if (event.nativeEvent.actionName === 'delete') {
+                            onDelete(goal);
+                        }
+                    }}
+                >
+                    <HStack justify="space-between" align="center">
+                        <VStack style={{ flex: 1 }} spacing="xs">
+                            <Heading size="md">{goal.description}</Heading>
+                            <HStack spacing="sm" align="center">
+                                {goal.type === "time" && (
+                                    <Caption color="muted">
+                                        ⏰ {goal.targetTime || "07:00"}
+                                    </Caption>
+                                )}
+                                {goal.type === "flexible" && (
+                                    <Caption color="muted">⚡ Flexible</Caption>
+                                )}
+                                {goal.isShared && (
+                                    <Caption color="success">👥 Shared</Caption>
+                                )}
+                            </HStack>
+                            {currentStreakCount > 0 && (
+                                <Caption color="warning">
+                                    {"🔥 " +
+                                        currentStreakCount +
+                                        " day streak" +
+                                        (bestStreakCount > currentStreakCount
+                                            ? " (Best: " + bestStreakCount + ")"
+                                            : "")}
+                                </Caption>
+                            )}
+                        </VStack>
+
+                        <VStack align="center" spacing="xs">
+                            {isCompletedToday ? (
+                                <Button
+                                    variant="success"
+                                    size="sm"
+                                    onPress={() => onUndo(goal)}
+                                    accessibilityLabel={`Undo completion for ${goal.description}`}
+                                    accessibilityHint="Double tap to mark this habit as not done"
+                                >
+                                    <Check
+                                        size={16}
+                                        color={colors.primaryForeground}
+                                        style={{ marginRight: spacing.xs }}
+                                    />
+                                    Completed
+                                </Button>
+                            ) : (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onPress={() => onComplete(goal.id)}
+                                    accessibilityLabel={`Mark ${goal.description} as done`}
+                                >
+                                    Mark Done
+                                </Button>
+                            )}
+                        </VStack>
+                    </HStack>
+                </Card>
+            </AnimatedView>
+        </Swipeable>
+    );
+});
+
+const LoadingSkeletonList = ({ spacing }: { spacing: any }) => (
+    <VStack spacing="md">
+        {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} padding="md" variant="outlined">
+                <HStack justify="space-between" align="center">
+                    <VStack style={{ flex: 1 }} spacing="xs">
+                        <LoadingSkeleton height={20} width="70%" />
+                        <LoadingSkeleton height={14} width="40%" />
+                    </VStack>
+                    <LoadingSkeleton height={32} width={60} style={{ borderRadius: 16 }} />
+                </HStack>
+            </Card>
+        ))}
+    </VStack>
+);
+
 /**
  * Modern redesigned Home screen
  * Requirements: 7.1, 7.3 - Clean habit tracking interface with progress indicators
  */
 export default function Home() {
-    const { user } = useAuth();
+    const { user, sendVerificationEmail, reload } = useAuth();
     const {
         goals,
         loading,
@@ -58,8 +229,34 @@ export default function Home() {
     const [showPaywall, setShowPaywall] = useState(false);
     const [notificationCount, setNotificationCount] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
+    const [verifying, setVerifying] = useState(false);
+    const [verificationCooldown, setVerificationCooldown] = useState(0);
     const { colors, spacing } = useThemeStyles();
     const { triggerCelebration } = useCelebration();
+
+    useEffect(() => {
+        let interval: any;
+        if (verificationCooldown > 0) {
+            interval = setInterval(() => {
+                setVerificationCooldown((prev) => prev - 1);
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [verificationCooldown]);
+
+    const handleResendVerification = async () => {
+        if (!user || verificationCooldown > 0) return;
+        setVerifying(true);
+        try {
+            await sendVerificationEmail();
+            showSuccessToast("Verification email sent! Check your inbox.");
+            setVerificationCooldown(60);
+        } catch (error: any) {
+            showErrorToast(error.message || "Failed to send verification email");
+        } finally {
+            setVerifying(false);
+        }
+    };
 
     const openSwipeableRowRef = useRef<Swipeable | null>(null);
 
@@ -205,14 +402,14 @@ export default function Home() {
     const progressPercentage =
         totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0;
 
-    const handleOpenGoalDetails = (goal: GoalWithStreak) => {
+    const handleOpenGoalDetails = useCallback((goal: GoalWithStreak) => {
         router.push({
             pathname: "/habit-detail",
             params: { habitId: goal.id, habitName: goal.description },
         });
-    };
+    }, []);
 
-    const handleUndoGoal = async (goalId: string) => {
+    const handleUndoGoal = useCallback(async (goalId: string) => {
         try {
             await undoGoalCompletion(goalId);
             HapticFeedback.selection();
@@ -221,9 +418,9 @@ export default function Home() {
             HapticFeedback.error();
             showErrorToast(error.message || "Failed to undo completion", "Error");
         }
-    };
+    }, [undoGoalCompletion]);
 
-    const confirmUndoGoal = (goal: GoalWithStreak) => {
+    const confirmUndoGoal = useCallback((goal: GoalWithStreak) => {
         Alert.alert(
             "Mark as not done?",
             "This removes today's completion and updates your streak.",
@@ -236,173 +433,17 @@ export default function Home() {
                 },
             ],
         );
-    };
+    }, [handleUndoGoal]);
 
-    const GoalCard = ({
-        goal,
-        index,
-        onDelete,
-        onComplete,
-        onUndo,
-        onOpenDetails,
-        onSwipeableOpen,
-    }: {
-        goal: GoalWithStreak;
-        index: number;
-        onDelete: (goal: GoalWithStreak) => void;
-        onComplete: (goalId: string) => void;
-        onUndo: (goal: GoalWithStreak) => void;
-        onOpenDetails: (goal: GoalWithStreak) => void;
-        onSwipeableOpen: (ref: Swipeable) => void;
-    }) => {
-        const { colors, spacing } = useThemeStyles();
-        const today = new Date().toDateString();
-        const isCompletedToday =
-            goal.latestCompletionDate &&
-            new Date(goal.latestCompletionDate).toDateString() === today;
-        const currentStreakCount = goal.currentStreakCount ?? 0;
-        const bestStreakCount = goal.bestStreakCount ?? 0;
-        const rowRef = useRef<Swipeable>(null);
-
-        const renderRightActions = (
-            progress: Animated.AnimatedInterpolation<number>,
-            dragX: Animated.AnimatedInterpolation<number>,
-        ) => {
-            const trans = dragX.interpolate({
-                inputRange: [-80, 0],
-                outputRange: [0, 80],
-                extrapolate: "clamp",
-            });
-            return (
-                <TouchableOpacity
-                    onPress={() => onDelete(goal)}
-                    style={{ width: 80, justifyContent: "center", alignItems: "center" }}
-                >
-                    <Animated.View
-                        style={{
-                            backgroundColor: colors.destructive,
-                            justifyContent: "center",
-                            alignItems: "center",
-                            width: 60,
-                            height: 60,
-                            borderRadius: 30,
-                            transform: [{ translateX: trans }],
-                        }}
-                    >
-                        <Trash2 size={24} color="white" />
-                    </Animated.View>
-                </TouchableOpacity>
-            );
-        };
-
-        return (
-            <Swipeable
-                ref={rowRef}
-                friction={2}
-                rightThreshold={40}
-                renderRightActions={renderRightActions}
-                onSwipeableOpen={() => {
-                    if (rowRef.current) {
-                        onSwipeableOpen(rowRef.current);
-                    }
-                }}
-            >
-                <AnimatedView
-                    key={goal.id}
-                    animation="slideInFromBottom"
-                    delay={index * 100}
-                >
-                    <Card
-                        style={{ marginBottom: 4 }}
-                        variant="outlined"
-                        padding="md"
-                        onPress={() => onOpenDetails(goal)}
-                        accessibilityActions={[
-                            { name: 'delete', label: 'Delete habit' }
-                        ]}
-                        onAccessibilityAction={(event) => {
-                            if (event.nativeEvent.actionName === 'delete') {
-                                onDelete(goal);
-                            }
-                        }}
-                    >
-                        <HStack justify="space-between" align="center">
-                            <VStack style={{ flex: 1 }} spacing="xs">
-                                <Heading size="md">{goal.description}</Heading>
-                                <HStack spacing="sm" align="center">
-                                    {goal.type === "time" && (
-                                        <Caption color="muted">
-                                            ⏰ {goal.targetTime || "07:00"}
-                                        </Caption>
-                                    )}
-                                    {goal.type === "flexible" && (
-                                        <Caption color="muted">⚡ Flexible</Caption>
-                                    )}
-                                    {goal.isShared && (
-                                        <Caption color="success">👥 Shared</Caption>
-                                    )}
-                                </HStack>
-                                {currentStreakCount > 0 && (
-                                    <Caption color="warning">
-                                        {"🔥 " +
-                                            currentStreakCount +
-                                            " day streak" +
-                                            (bestStreakCount > currentStreakCount
-                                                ? " (Best: " + bestStreakCount + ")"
-                                                : "")}
-                                    </Caption>
-                                )}
-                            </VStack>
-
-                            <VStack align="center" spacing="xs">
-                                {isCompletedToday ? (
-                                    <Button
-                                        variant="success"
-                                        size="sm"
-                                        onPress={() => onUndo(goal)}
-                                        accessibilityLabel={`Undo completion for ${goal.description}`}
-                                        accessibilityHint="Double tap to mark this habit as not done"
-                                    >
-                                        <Check
-                                            size={16}
-                                            color={colors.primaryForeground}
-                                            style={{ marginRight: spacing.xs }}
-                                        />
-                                        Completed
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onPress={() => onComplete(goal.id)}
-                                        accessibilityLabel={`Mark ${goal.description} as done`}
-                                    >
-                                        Mark Done
-                                    </Button>
-                                )}
-                            </VStack>
-                        </HStack>
-                    </Card>
-                </AnimatedView>
-            </Swipeable>
-        );
-    };
-
-    const renderLoadingSkeleton = () => (
-        <VStack spacing="md">
-            {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} padding="md" variant="outlined">
-                    <HStack justify="space-between" align="center">
-                        <VStack style={{ flex: 1 }} spacing="xs">
-                            <LoadingSkeleton height={20} width="70%" />
-                            <LoadingSkeleton height={14} width="40%" />
-                        </VStack>
-                        <LoadingSkeleton height={32} width={60} style={{ borderRadius: 16 }} />
-                    </HStack>
-                </Card>
-            ))}
-        </VStack>
-    );
+    const handleSwipeableOpen = useCallback((ref: Swipeable) => {
+        if (
+            openSwipeableRowRef.current &&
+            ref !== openSwipeableRowRef.current
+        ) {
+            openSwipeableRowRef.current.close();
+        }
+        openSwipeableRowRef.current = ref;
+    }, []);
 
     return (
         <SafeAreaView
@@ -420,6 +461,61 @@ export default function Home() {
                         />
                     }
                 >
+                    {/* Email Verification Banner */}
+                    {user && !user.emailVerified && (
+                        <AnimatedView animation="fadeIn">
+                            <Card 
+                                variant="outlined" 
+                                padding="md" 
+                                style={{ 
+                                    backgroundColor: colors.destructive + '10', 
+                                    borderColor: colors.destructive,
+                                    marginBottom: spacing.lg 
+                                }}
+                            >
+                                <VStack spacing="sm">
+                                    <HStack spacing="sm" align="center">
+                                        <Bell size={20} color={colors.destructive} />
+                                        <Body weight="semibold" style={{ color: colors.destructive }}>
+                                            Verify Your Email
+                                        </Body>
+                                    </HStack>
+                                    <Caption color="muted">
+                                        Please verify your email to ensure account recovery and social features work correctly.
+                                    </Caption>
+                                    <HStack spacing="sm">
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onPress={handleResendVerification}
+                                            loading={verifying}
+                                            disabled={verificationCooldown > 0}
+                                            style={{ borderColor: colors.destructive, height: 32, minHeight: 32 }}
+                                        >
+                                            <Body size="xs" style={{ color: colors.destructive }}>
+                                                {verificationCooldown > 0 ? `Wait ${verificationCooldown}s` : "Resend Email"}
+                                            </Body>
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onPress={async () => {
+                                                try {
+                                                    await reload();
+                                                    showSuccessToast("Status updated!");
+                                                } catch (e) {
+                                                    console.error(e);
+                                                }
+                                            }}
+                                            style={{ borderColor: colors.destructive, height: 32, minHeight: 32 }}
+                                        >
+                                            <Body size="xs" style={{ color: colors.destructive }}>Refresh Status</Body>
+                                        </Button>
+                                    </HStack>
+                                </VStack>
+                            </Card>
+                        </AnimatedView>
+                    )}
                     {/* Header with greeting */}
                     <AnimatedView animation="fadeIn">
                         <View style={{ gap: 4, marginBottom: spacing.xl }}>
@@ -534,7 +630,7 @@ export default function Home() {
 
                     {/* Goals List */}
                     {loading ? (
-                        renderLoadingSkeleton()
+                        <LoadingSkeletonList spacing={spacing} />
                     ) : goals.length > 0 ? (
                         <VStack spacing="md">
                             {goals.map((goal, index) => (
@@ -542,19 +638,13 @@ export default function Home() {
                                     key={goal.id}
                                     goal={goal}
                                     index={index}
+                                    colors={colors}
+                                    spacing={spacing}
                                     onDelete={confirmDeleteGoal}
                                     onComplete={handleCompleteGoal}
                                     onUndo={confirmUndoGoal}
                                     onOpenDetails={handleOpenGoalDetails}
-                                    onSwipeableOpen={(ref) => {
-                                        if (
-                                            openSwipeableRowRef.current &&
-                                            ref !== openSwipeableRowRef.current
-                                        ) {
-                                            openSwipeableRowRef.current.close();
-                                        }
-                                        openSwipeableRowRef.current = ref;
-                                    }}
+                                    onSwipeableOpen={handleSwipeableOpen}
                                 />
                             ))}
                         </VStack>

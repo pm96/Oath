@@ -1,10 +1,11 @@
-import { Body, Button, Caption, Card, HStack, LoadingSkeleton, VStack } from "@/components/ui";
+import { Avatar, Body, Button, Caption, Card, HStack, LoadingSkeleton, VStack } from "@/components/ui";
 import { useFriends } from "@/hooks/useFriends";
 import { useThemeStyles } from "@/hooks/useTheme";
 import { blockUser } from "@/services/firebase/friendService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
-import React from "react";
+import React, { useState } from "react";
 import { Alert, FlatList, View } from "react-native";
+import { ReportModal } from "./ReportModal";
 
 interface FriendListProps {
     userId?: string;
@@ -13,6 +14,8 @@ interface FriendListProps {
 export function FriendList({ userId }: FriendListProps) {
     const { friendsList, loading, removeFriendById, removingFriendId } = useFriends(userId);
     const { colors, spacing } = useThemeStyles();
+    
+    const [reportingUser, setReportingUser] = useState<{ id: string, name: string } | null>(null);
 
     const handleBlock = async (friendId: string) => {
         if (!userId) return;
@@ -34,6 +37,10 @@ export function FriendList({ userId }: FriendListProps) {
                     text: "Remove Friend",
                     style: "destructive",
                     onPress: () => removeFriendById(friendId),
+                },
+                {
+                    text: "Report User",
+                    onPress: () => setReportingUser({ id: friendId, name: name }),
                 },
                 {
                     text: "Block User",
@@ -71,35 +78,51 @@ export function FriendList({ userId }: FriendListProps) {
     }
 
     return (
-        <FlatList
-            data={friendsList}
-            keyExtractor={(item) => item.userId}
-            contentContainerStyle={{ gap: spacing.md }}
-            scrollEnabled={false} // Rendered inside a ScrollView usually
-            renderItem={({ item }) => (
-                <Card variant="outlined" padding="md">
-                    <HStack align="center" justify="space-between">
-                        <VStack style={{ flex: 1 }}>
-                            <Body weight="semibold">{item.displayName}</Body>
-                            <Caption color="muted">{item.email}</Caption>
-                            {item.shameScore > 0 && (
-                                <Caption color="destructive">
-                                    {item.shameScore} shame point{item.shameScore !== 1 ? 's' : ''}
-                                </Caption>
-                            )}
-                        </VStack>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onPress={() => confirmRemove(item.userId, item.displayName)}
-                            disabled={removingFriendId === item.userId}
-                            loading={removingFriendId === item.userId}
-                        >
-                            Remove
-                        </Button>
-                    </HStack>
-                </Card>
+        <>
+            <FlatList
+                data={friendsList}
+                keyExtractor={(item) => item.userId}
+                contentContainerStyle={{ gap: spacing.md }}
+                scrollEnabled={false} // Rendered inside a ScrollView usually
+                renderItem={({ item }) => (
+                    <Card variant="elevated" padding="md">
+                        <HStack align="center" spacing="md">
+                            <Avatar 
+                                fallback={item.displayName[0].toUpperCase()} 
+                                size="md" 
+                            />
+                            <VStack style={{ flex: 1 }}>
+                                <Body weight="semibold">{item.displayName}</Body>
+                                <Caption color="muted">{item.email}</Caption>
+                                {item.shameScore > 0 && (
+                                    <Caption color="destructive" weight="medium">
+                                        {item.shameScore} shame point{item.shameScore !== 1 ? 's' : ''}
+                                    </Caption>
+                                )}
+                            </VStack>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onPress={() => confirmRemove(item.userId, item.displayName)}
+                                disabled={removingFriendId === item.userId}
+                                loading={removingFriendId === item.userId}
+                                style={{ height: 36, minHeight: 36, borderRadius: 18, paddingHorizontal: 12 }}
+                            >
+                                <Body size="xs" color="primary">Manage</Body>
+                            </Button>
+                        </HStack>
+                    </Card>
+                )}
+            />
+
+            {reportingUser && (
+                <ReportModal
+                    visible={!!reportingUser}
+                    targetUserId={reportingUser.id}
+                    targetUserName={reportingUser.name}
+                    onClose={() => setReportingUser(null)}
+                />
             )}
-        />
+        </>
     );
 }

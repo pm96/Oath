@@ -615,6 +615,124 @@ export const useStreakFreeze = onCall(async (request) => {
 });
 
 /**
+ * Callable Cloud Function to block a user
+ */
+export const blockUser = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Auth required");
+    const { targetUserId } = request.data;
+    const userId = request.auth.uid;
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+            const targetRef = db.doc(`artifacts/${APP_ID}/users/${targetUserId}`);
+
+            transaction.update(userRef, {
+                blockedUsers: admin.firestore.FieldValue.arrayUnion(targetUserId),
+                friends: admin.firestore.FieldValue.arrayRemove(targetUserId)
+            });
+            transaction.update(targetRef, {
+                friends: admin.firestore.FieldValue.arrayRemove(userId)
+            });
+        });
+        return { success: true };
+    } catch (e) {
+        throw new HttpsError("internal", "Failed to block user");
+    }
+});
+
+/**
+ * Callable Cloud Function to remove a friend
+ */
+export const removeFriend = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Auth required");
+    const { friendId } = request.data;
+    const userId = request.auth.uid;
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+            const friendRef = db.doc(`artifacts/${APP_ID}/users/${friendId}`);
+
+            transaction.update(userRef, {
+                friends: admin.firestore.FieldValue.arrayRemove(friendId)
+            });
+            transaction.update(friendRef, {
+                friends: admin.firestore.FieldValue.arrayRemove(userId)
+            });
+        });
+        return { success: true };
+    } catch (e) {
+        throw new HttpsError("internal", "Failed to remove friend");
+    }
+});
+
+/**
+ * Callable Cloud Function to accept a friend request and update both users
+ */
+export const acceptFriendRequest = onCall(async (request) => {
+    console.log("acceptFriendRequest function called");
+
+    if (!request.auth) {
+        throw new HttpsError(
+            "unauthenticated",
+            "User must be authenticated to accept friend requests",
+        );
+    }
+
+    const userId = request.auth.uid;
+    const { requestId } = request.data;
+
+    if (!requestId) {
+        throw new HttpsError("invalid-argument", "requestId is required");
+    }
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            const requestRef = db.doc(`artifacts/${APP_ID}/friendRequests/${requestId}`);
+            const requestDoc = await transaction.get(requestRef);
+
+            if (!requestDoc.exists) {
+                throw new HttpsError("not-found", "Friend request not found");
+            }
+
+            const requestData = requestDoc.data();
+            if (requestData?.receiverId !== userId) {
+                throw new HttpsError("permission-denied", "Unauthorized to accept this request");
+            }
+
+            if (requestData?.status !== "pending") {
+                throw new HttpsError("failed-precondition", "Request is no longer pending");
+            }
+
+            const senderId = requestData.senderId;
+            const senderRef = db.doc(`artifacts/${APP_ID}/users/${senderId}`);
+            const receiverRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+
+            // Update request status
+            transaction.update(requestRef, {
+                status: "accepted",
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            // Add each other to friends lists
+            transaction.update(senderRef, {
+                friends: admin.firestore.FieldValue.arrayUnion(userId)
+            });
+            transaction.update(receiverRef, {
+                friends: admin.firestore.FieldValue.arrayUnion(senderId)
+            });
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error in acceptFriendRequest:", error);
+        if (error instanceof HttpsError) throw error;
+        throw new HttpsError("internal", "Failed to accept friend request");
+    }
+});
+
+/**
  * Callable Cloud Function to update habit details
  */
 export const updateHabit = onCall(async (request) => {
@@ -1023,8 +1141,10 @@ export const findUserByInviteCode = onCall(async (request) => {
     }
 
     const usersRef = db.collection(`artifacts/${APP_ID}/users`);
+    const searchCode = inviteCode.trim().toUpperCase();
+    
     const querySnapshot = await usersRef
-        .where("inviteCode", "==", inviteCode.toUpperCase())
+        .where("inviteCode", "==", searchCode)
         .limit(1)
         .get();
 

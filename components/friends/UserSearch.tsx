@@ -11,9 +11,10 @@ import {
 } from "@/services/firebase/friendService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
 import * as Haptics from "expo-haptics";
-import React from "react";
+import React, { useState } from "react";
 import { Alert, FlatList, Pressable, View } from "react-native";
 import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
+import { ReportModal } from "./ReportModal";
 
 interface UserSearchProps {
     currentUserId?: string;
@@ -57,6 +58,7 @@ export function UserSearch({ currentUserId, onUserSelect }: UserSearchProps) {
     const [sendingRequestTo, setSendingRequestTo] = React.useState<string | null>(
         null,
     );
+    const [reportingUser, setReportingUser] = useState<{ id: string, name: string } | null>(null);
 
     /**
      * Debounce search query by 300ms
@@ -210,6 +212,13 @@ export function UserSearch({ currentUserId, onUserSelect }: UserSearchProps) {
                 >
                     <Text style={{ color: '#ef4444', fontSize: 12 }}>Block</Text>
                 </Button>
+                <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onPress={() => setReportingUser({ id: result.userId, name: result.displayName })}
+                >
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>Report</Text>
+                </Button>
             </View>
         );
     };
@@ -313,6 +322,15 @@ export function UserSearch({ currentUserId, onUserSelect }: UserSearchProps) {
                 </View>
             ) : (
                 renderEmptyState()
+            )}
+
+            {reportingUser && (
+                <ReportModal
+                    visible={!!reportingUser}
+                    targetUserId={reportingUser.id}
+                    targetUserName={reportingUser.name}
+                    onClose={() => setReportingUser(null)}
+                />
             )}
         </View>
     );

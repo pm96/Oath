@@ -24,6 +24,9 @@ interface AuthContextType {
         displayName: string,
     ) => Promise<FirebaseUser>;
     signOut: () => Promise<void>;
+    sendPasswordReset: (email: string) => Promise<void>;
+    sendVerificationEmail: () => Promise<void>;
+    reload: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(
@@ -44,6 +47,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [user, setUser] = useState<AppUser | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const refreshUserState = async () => {
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser) {
+            await firebaseUser.reload();
+            const reloadedUser = auth.currentUser;
+            if (reloadedUser) {
+                setUser((prev) => prev ? { ...reloadedUser, ...prev } : (reloadedUser as AppUser));
+            }
+        }
+    };
+
     useEffect(() => {
         // Listen to auth state changes and Firestore user document
         const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
@@ -54,6 +68,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                     (firestoreUser) => {
                         if (firestoreUser) {
                             // Combine auth user and firestore user data
+                            // We use the raw firebaseUser object properties but the state remains a plain object
                             setUser({ ...firebaseUser, ...firestoreUser });
                         } else {
                             // Auth user exists but no Firestore doc, might be an error state
@@ -79,6 +94,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         signIn: AuthService.signIn,
         signUp: AuthService.signUp,
         signOut: AuthService.signOut,
+        sendPasswordReset: AuthService.sendPasswordReset,
+        sendVerificationEmail: AuthService.sendVerificationEmail,
+        reload: refreshUserState,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
