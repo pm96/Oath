@@ -193,6 +193,8 @@ const GoalCard = React.memo(({
     );
 });
 
+GoalCard.displayName = "GoalCard";
+
 const LoadingSkeletonList = ({ spacing }: { spacing: any }) => (
     <VStack spacing="md">
         {Array.from({ length: 3 }).map((_, i) => (

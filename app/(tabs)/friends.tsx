@@ -64,7 +64,7 @@ export default function FriendsScreen() {
     const inviteCode = user?.uid?.slice(-6).toUpperCase() || "DEMO123";
 
     const inviteMessage = useMemo(
-        () => `Join me on the app! Use my invite code: ${inviteCode}`,
+        () => `Join me on Oath and let's crush our goals! Tap to add me: https://oath.app/invite/${inviteCode} (Or use code: ${inviteCode})`,
         [inviteCode],
     );
 
