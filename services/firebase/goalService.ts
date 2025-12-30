@@ -150,6 +150,7 @@ export async function createGoal(
                 createdAt: serverTimestamp(),
                 redSince: null,
                 difficulty: goalInput.difficulty,
+                highFives: [],
             };
 
             const docRef = await addDoc(goalsCollection, goalData);

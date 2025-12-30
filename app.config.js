@@ -1,7 +1,7 @@
-{
+export default {
   "expo": {
     "name": "Oath",
-    "slug": "oath",
+    "slug": "Oath",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/splash-icon.png",
@@ -11,9 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pm96.appOath",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+      "googleServicesFile": process.env.GOOGLE_SERVICE_INFO_PLIST ?? (require('fs').existsSync('./GoogleService-Info.plist') ? './GoogleService-Info.plist' : undefined)
     },
     "android": {
       "adaptiveIcon": {
@@ -25,7 +23,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.pm96.appOath",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": process.env.GOOGLE_SERVICES_JSON ?? (require('fs').existsSync('./google-services.json') ? './google-services.json' : undefined)
     },
     "notification": {
       "icon": "./assets/images/splash-icon.png",
@@ -38,12 +36,7 @@
       "favicon": "./assets/images/splash-icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "unstable_useServerMiddleware": true
-        }
-      ],
+      ["expo-router", { "unstable_useServerMiddleware": true }],
       [
         "expo-splash-screen",
         {
@@ -70,14 +63,12 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {
-        "unstable_useServerMiddleware": true
-      },
+      "router": {},
       "eas": {
-        "projectId": "b0d32c41-2db5-4555-a85b-4fcc5755ae3c"
+        "projectId": "0e465e71-1e74-4280-b29a-d43a2445564b"
       }
     },
-    "owner": "pm96s-organization",
+    "owner": "pm96",
     "updates": {
       "url": "https://u.expo.dev/0e465e71-1e74-4280-b29a-d43a2445564b"
     },
@@ -85,4 +76,4 @@
       "policy": "appVersion"
     }
   }
-}
+};
