@@ -262,15 +262,15 @@ export default function Home() {
 
     const openSwipeableRowRef = useRef<Swipeable | null>(null);
 
-    const handleOpenCreate = () => {
-        // Simulated 'Pro' check.
-        const isPro = false; 
+    const handleOpenCreate = useCallback(() => {
+        // Use the actual user plan from AuthContext
+        const isPro = user?.plan === 'pro'; 
         if (goals.length >= 3 && !isPro) {
             setShowPaywall(true);
         } else {
             setShowCreateForm(true);
         }
-    };
+    }, [goals.length, user?.plan]);
 
     // Subscribe to unread notifications (recent nudges)
     useEffect(() => {

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Oath",
-    "slug": "Oath",
+    "slug": "oath",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/splash-icon.png",
@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pm96.appOath"
+      "bundleIdentifier": "com.pm96.appOath",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -35,7 +38,12 @@
       "favicon": "./assets/images/splash-icon.png"
     },
     "plugins": [
-      ["expo-router", { "unstable_useServerMiddleware": true }],
+      [
+        "expo-router",
+        {
+          "unstable_useServerMiddleware": true
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -62,12 +70,14 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {},
+      "router": {
+        "unstable_useServerMiddleware": true
+      },
       "eas": {
-        "projectId": "0e465e71-1e74-4280-b29a-d43a2445564b"
+        "projectId": "b0d32c41-2db5-4555-a85b-4fcc5755ae3c"
       }
     },
-    "owner": "pm96",
+    "owner": "pm96s-organization",
     "updates": {
       "url": "https://u.expo.dev/0e465e71-1e74-4280-b29a-d43a2445564b"
     },

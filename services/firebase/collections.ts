@@ -19,6 +19,7 @@ export interface User {
     email: string;
     shameScore: number;
     friends: string[];
+    blockedUsers: string[];
     fcmToken: string | null;
     createdAt: Date;
     searchableEmail: string; // Lowercase email for case-insensitive search
@@ -32,6 +33,9 @@ export interface User {
         defaultShare?: boolean;
         // Add other privacy settings here
     };
+    plan?: "free" | "pro";
+    subscriptionId?: string | null;
+    inviteCode?: string;
 }
 
 export interface FriendRequest {

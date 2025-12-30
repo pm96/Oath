@@ -1,6 +1,8 @@
+import { useAuth } from "@/hooks/useAuth";
 import { useThemeStyles } from "@/hooks/useTheme";
+import { upgradeToPro } from "@/services/firebase/subscriptionService";
 import { Flame, Infinity, ShieldCheck, Trophy } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { Button } from "./Button";
 import { Card } from "./Card";
@@ -46,7 +48,22 @@ export function PaywallModal({
     onClose,
     onUpgrade,
 }: PaywallModalProps) {
-    const { colors, spacing } = useThemeStyles();
+    const { colors } = useThemeStyles();
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(false);
+
+    const handleUpgrade = async () => {
+        setLoading(true);
+        try {
+            await upgradeToPro();
+            onUpgrade?.();
+            onClose();
+        } catch (e) {
+            // Error handled by service toast
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <Modal visible={visible} onClose={onClose} title="" size="lg">
@@ -120,12 +137,14 @@ export function PaywallModal({
                     <VStack space="sm">
                         <Button
                             variant="primary"
-                            onPress={() => onUpgrade?.()}
+                            onPress={handleUpgrade}
+                            loading={loading}
+                            disabled={loading}
                             style={{ height: 56 }}
                         >
                             Start 7-Day Free Trial
                         </Button>
-                        <Button variant="ghost" onPress={onClose}>
+                        <Button variant="ghost" onPress={onClose} disabled={loading}>
                             Maybe Later
                         </Button>
                     </VStack>

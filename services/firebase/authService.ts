@@ -181,6 +181,7 @@ export async function signUp(
                     shameScore: 0,
                     friends: [],
                     blockedUsers: [],
+                    plan: "free",
                     fcmToken: null,
                     createdAt: serverTimestamp(),
                     searchableEmail: trimmedEmail.toLowerCase(),

@@ -12,16 +12,35 @@ import {
     PaywallModal,
     VStack,
 } from "@/components/ui";
+import { SafeAreaView } from "@/components/ui/safe-area-view";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme, useThemeStyles } from "@/hooks/useTheme";
 import { User } from "@/services/firebase/collections";
-import { subscribeToUserData, updateUserNotificationSettings } from "@/services/firebase/socialService";
+import {
+    subscribeToUserData,
+    updateUserNotificationSettings,
+} from "@/services/firebase/socialService";
 import { showErrorToast, showSuccessToast } from "@/utils/toast";
+import * as Linking from "expo-linking";
 import { router } from "expo-router";
-import { Bell, LogOut, Moon, Settings, Shield, Trophy } from "lucide-react-native";
+import {
+    Bell,
+    FileText,
+    LogOut,
+    MessageSquare,
+    Moon,
+    Settings,
+    Shield,
+    Trophy,
+} from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { RefreshControl, ScrollView, Switch, View, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "@/components/ui/safe-area-view";
+import {
+    RefreshControl,
+    ScrollView,
+    Switch,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 /**
  * Modern redesigned Profile screen
@@ -130,22 +149,48 @@ export default function Profile() {
                             {userData?.email || user?.email || "demo@example.com"}
                         </Body>
                         <HStack spacing="xs" style={{ marginTop: spacing.xs }}>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onPress={() => setShowPaywall(true)}
-                                style={{
-                                    height: 32,
-                                    minHeight: 32,
-                                    borderColor: colors.primary,
-                                    borderRadius: 16,
-                                }}
-                            >
-                                <HStack spacing="xs" align="center">
-                                    <Trophy size={14} color={colors.primary} />
-                                    <Body size="xs" style={{ color: colors.primary }}>Upgrade to Pro</Body>
-                                </HStack>
-                            </Button>
+                            {user?.plan === "pro" ? (
+                                <View
+                                    style={{
+                                        backgroundColor: colors.primary + "15",
+                                        paddingHorizontal: spacing.sm,
+                                        paddingVertical: 4,
+                                        borderRadius: 12,
+                                        borderWidth: 1,
+                                        borderColor: colors.primary,
+                                    }}
+                                >
+                                    <HStack spacing="xs" align="center">
+                                        <Trophy size={14} color={colors.primary} />
+                                        <Body
+                                            size="xs"
+                                            weight="semibold"
+                                            style={{ color: colors.primary }}
+                                        >
+                                            Pro Member
+                                        </Body>
+                                    </HStack>
+                                </View>
+                            ) : (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onPress={() => setShowPaywall(true)}
+                                    style={{
+                                        height: 32,
+                                        minHeight: 32,
+                                        borderColor: colors.primary,
+                                        borderRadius: 16,
+                                    }}
+                                >
+                                    <HStack spacing="xs" align="center">
+                                        <Trophy size={14} color={colors.primary} />
+                                        <Body size="xs" style={{ color: colors.primary }}>
+                                            Upgrade to Pro
+                                        </Body>
+                                    </HStack>
+                                </Button>
+                            )}
                         </HStack>
                     </View>
                 </HStack>
@@ -219,7 +264,7 @@ export default function Profile() {
                 <Card variant="default" padding="md">
                     <VStack spacing="md">
                         {/* Privacy */}
-                        <TouchableOpacity onPress={() => router.push('/privacy-settings')}>
+                        <TouchableOpacity onPress={() => router.push("/privacy-settings")}>
                             <HStack align="center" justify="space-between">
                                 <HStack align="center" spacing="md">
                                     <Shield size={20} color={colors.foreground} />
@@ -229,11 +274,37 @@ export default function Profile() {
                         </TouchableOpacity>
 
                         {/* Account Settings */}
-                        <TouchableOpacity onPress={() => router.push('/account-settings')}>
+                        <TouchableOpacity onPress={() => router.push("/account-settings")}>
                             <HStack align="center" justify="space-between">
                                 <HStack align="center" spacing="md">
                                     <Settings size={20} color={colors.foreground} />
                                     <Body>Account Settings</Body>
+                                </HStack>
+                            </HStack>
+                        </TouchableOpacity>
+
+                        {/* Send Feedback */}
+                        <TouchableOpacity
+                            onPress={() =>
+                                Linking.openURL("mailto:pm96@live.no?subject=Oath Feedback")
+                            }
+                        >
+                            <HStack align="center" justify="space-between">
+                                <HStack align="center" spacing="md">
+                                    <MessageSquare size={20} color={colors.foreground} />
+                                    <Body>Send Feedback</Body>
+                                </HStack>
+                            </HStack>
+                        </TouchableOpacity>
+
+                        {/* Privacy Policy */}
+                        <TouchableOpacity
+                            onPress={() => Linking.openURL("https://oath.app/privacy")}
+                        >
+                            <HStack align="center" justify="space-between">
+                                <HStack align="center" spacing="md">
+                                    <FileText size={20} color={colors.foreground} />
+                                    <Body>Privacy Policy</Body>
                                 </HStack>
                             </HStack>
                         </TouchableOpacity>
@@ -256,7 +327,10 @@ export default function Profile() {
             >
                 <HStack align="center" spacing="sm">
                     <LogOut size={20} color={colors.destructiveForeground} />
-                    <Body style={{ color: colors.destructiveForeground }} weight="semibold">
+                    <Body
+                        style={{ color: colors.destructiveForeground }}
+                        weight="semibold"
+                    >
                         {signingOut ? "Signing Out..." : "Log Out"}
                     </Body>
                 </HStack>

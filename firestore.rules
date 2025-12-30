@@ -41,8 +41,11 @@ service cloud.firestore {
         request.auth.uid == userId || 
         (isFriend(userId) && !isBlockedBy(userId))
       );
-      // Allow write only for own document (Requirements 7.1)
-      allow write: if isOwner(userId);
+      
+      // Allow write only for own document AND block editing sensitive plan fields
+      allow write: if isOwner(userId) && 
+        (!request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['plan', 'subscriptionId', 'shameScore']));
     }
 
     // Friend requests collection

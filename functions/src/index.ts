@@ -615,6 +615,31 @@ export const useStreakFreeze = onCall(async (request) => {
 });
 
 /**
+ * Callable Cloud Function to upgrade a user to Pro
+ */
+export const purchaseProPlan = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Auth required");
+    }
+
+    const userId = request.auth.uid;
+    const userRef = db.doc(`artifacts/${APP_ID}/users/${userId}`);
+
+    try {
+        await userRef.update({
+            plan: "pro",
+            subscriptionId: `sub_${Date.now()}_${userId.slice(0, 5)}`,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error upgrading plan:", error);
+        throw new HttpsError("internal", "Failed to process upgrade");
+    }
+});
+
+/**
  * Callable Cloud Function to block a user
  */
 export const blockUser = onCall(async (request) => {
