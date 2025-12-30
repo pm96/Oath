@@ -44,7 +44,6 @@ app-example
 
 .jest-cache/
 
-firebaseConfig.js
 google-services.json
 GoogleService-Info.plist
 firebase.json

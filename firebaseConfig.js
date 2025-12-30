@@ -1,0 +1,33 @@
+// Import the functions you need from the SDKs you need
+import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
+import { initializeApp } from "firebase/app";
+import { getReactNativePersistence, initializeAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyAuHgSN2SPxa1dW5EnGdbNAd7jIZSZP4Dc",
+    authDomain: "oath-34449.firebaseapp.com",
+    projectId: "oath-34449",
+    storageBucket: "oath-34449.firebasestorage.app",
+    messagingSenderId: "520674735848",
+    appId: "1:520674735848:web:4ddbe37c4b7ccbc1a9bb5d",
+    measurementId: "G-1PGN7XCYTQ",
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+// Initialize Auth with AsyncStorage persistence for React Native
+const auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+});
+
+// Initialize Firestore
+const db = getFirestore(app);
+
+// App ID for Firestore collections structure
+const APP_ID = "oath-app";
+
+export { app, APP_ID, auth, db };
+
